@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>40 Online Ecuador</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- Pantalla 1: Lobby -->
+  <section id="screen-lobby" class="screen active">
+    <div class="card">
+      <h1>🃏 40 Online Ecuador</h1>
+      <p class="subtitle">El juego tradicional ecuatoriano, ahora online.</p>
+
+      <div class="form-group">
+        <label for="player-name">Tu nombre</label>
+        <input type="text" id="player-name" maxlength="20" placeholder="Escribe tu nombre" />
+      </div>
+
+      <div class="actions">
+        <button id="btn-create" class="primary">Crear sala</button>
+        <div class="divider">o</div>
+        <div class="form-group">
+          <label for="room-code">Código de sala</label>
+          <input type="text" id="room-code" maxlength="4" placeholder="ABCD" />
+        </div>
+        <button id="btn-join" class="secondary">Unirse</button>
+      </div>
+
+      <div id="lobby-error" class="error"></div>
+    </div>
+  </section>
+
+  <!-- Pantalla 2: Sala de espera -->
+  <section id="screen-waiting" class="screen">
+    <div class="card">
+      <h2>Sala: <span id="waiting-room-code"></span></h2>
+      <p class="subtitle">Compartí este código con tus amigos.</p>
+
+      <h3>Jugadores</h3>
+      <ul id="waiting-players-list" class="players-list"></ul>
+
+      <button id="btn-start" class="primary" disabled>
+        Iniciar partida (esperando 4 jugadores)
+      </button>
+    </div>
+  </section>
+
+  <!-- Pantalla 3: Mesa de juego -->
+  <section id="screen-game" class="screen">
+    <header class="game-header">
+      <div class="scoreboard">
+        <div class="team team-a"><span>Equipo A</span><strong id="score-a">0</strong></div>
+        <div class="team team-b"><span>Equipo B</span><strong id="score-b">0</strong></div>
+      </div>
+      <div class="game-info">
+        <div>Mano: <strong id="hand-number">1</strong></div>
+        <div>Mazo: <strong id="deck-count">0</strong></div>
+        <div>Turno de: <strong id="current-player-name">-</strong></div>
+      </div>
+    </header>
+
+    <!-- Otros jugadores -->
+    <div class="opponents" id="opponents"></div>
+
+    <!-- Mesa central -->
+    <div class="table-area">
+      <h3>Mesa</h3>
+      <div id="table-cards" class="cards-row"></div>
+    </div>
+
+    <!-- Mi mano -->
+    <div class="my-area">
+      <div class="my-info">
+        <span id="my-name">-</span>
+        <span class="badge" id="my-team">Equipo -</span>
+      </div>
+      <div id="my-hand" class="cards-row"></div>
+      <div class="play-actions">
+        <button id="btn-play" class="primary" disabled>Confirmar jugada</button>
+        <button id="btn-clear" class="secondary">Limpiar selección</button>
+      </div>
+    </div>
+
+    <!-- Log de eventos -->
+    <aside class="log-panel">
+      <h4>Eventos</h4>
+      <ul id="log-list"></ul>
+    </aside>
+
+    <!-- Modales: fin de mano / fin de partida -->
+    <div id="modal-end-hand" class="modal hidden">
+      <div class="modal-content">
+        <h2>¡Fin de mano!</h2>
+        <p id="end-hand-summary"></p>
+        <button id="btn-next-hand" class="primary">Continuar</button>
+      </div>
+    </div>
+
+    <div id="modal-end-game" class="modal hidden">
+      <div class="modal-content">
+        <h2>🏆 Partida finalizada</h2>
+        <p id="end-game-summary"></p>
+        <button onclick="location.reload()" class="primary">Nueva partida</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+  </section>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

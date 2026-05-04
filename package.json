@@ -1,0 +1,17 @@
+{
+  "name": "40-online-ecuador",
+  "version": "0.1.0",
+  "description": "MVP del juego tradicional ecuatoriano 40, online y multijugador",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}

@@ -1,0 +1,316 @@
+/* style.css — diseño funcional, claro, mesa de cartas */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --green-table: #0a6b3a;
+  --green-dark: #074a28;
+  --gold: #d4af37;
+  --red: #c0392b;
+  --black: #1a1a1a;
+  --white: #f7f5f0;
+  --gray: #8a8a8a;
+  --team-a: #3498db;
+  --team-b: #e67e22;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--green-dark);
+  color: var(--white);
+  min-height: 100vh;
+}
+
+/* === Pantallas === */
+.screen { display: none; min-height: 100vh; padding: 1rem; }
+.screen.active { display: block; }
+
+/* === Tarjeta de lobby/sala === */
+.card {
+  max-width: 480px;
+  margin: 4rem auto;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+h1 { text-align: center; margin-bottom: 0.5rem; color: var(--gold); }
+h2 { margin-bottom: 1rem; color: var(--gold); }
+h3 { margin: 1rem 0 0.5rem; color: var(--white); }
+.subtitle { text-align: center; color: var(--gray); margin-bottom: 2rem; }
+
+.form-group { margin-bottom: 1rem; }
+.form-group label { display: block; margin-bottom: 0.5rem; font-size: 0.9rem; }
+input[type="text"] {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--white);
+  border-radius: 6px;
+  font-size: 1rem;
+  text-transform: none;
+}
+#room-code { text-transform: uppercase; letter-spacing: 0.2em; text-align: center; }
+
+button {
+  width: 100%;
+  padding: 0.85rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.2s;
+}
+button:hover:not(:disabled) { transform: translateY(-1px); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+.primary { background: var(--gold); color: var(--black); }
+.secondary { background: rgba(255, 255, 255, 0.1); color: var(--white); border: 1px solid rgba(255, 255, 255, 0.2); }
+.divider { text-align: center; margin: 1rem 0; color: var(--gray); }
+
+.actions > * { margin-bottom: 0.75rem; }
+.error { color: #ff8a80; margin-top: 1rem; min-height: 1.2em; text-align: center; }
+
+/* === Lista de jugadores en sala de espera === */
+.players-list { list-style: none; }
+.players-list li {
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  margin-bottom: 0.5rem;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.players-list .badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.team-a-badge { background: var(--team-a); color: white; }
+.team-b-badge { background: var(--team-b); color: white; }
+
+/* === Pantalla de juego === */
+#screen-game {
+  background: radial-gradient(ellipse at center, var(--green-table) 0%, var(--green-dark) 100%);
+  padding: 0.5rem;
+  display: none;
+}
+#screen-game.active { display: grid; }
+#screen-game {
+  grid-template-areas:
+    "header header"
+    "opponents log"
+    "table log"
+    "myarea log";
+  grid-template-columns: 1fr 240px;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 0.5rem;
+}
+
+.game-header {
+  grid-area: header;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+.scoreboard { display: flex; gap: 1rem; }
+.team {
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 90px;
+}
+.team-a { border-left: 4px solid var(--team-a); }
+.team-b { border-left: 4px solid var(--team-b); }
+.team span { font-size: 0.8rem; color: var(--gray); }
+.team strong { font-size: 1.5rem; color: var(--gold); }
+.game-info { display: flex; gap: 1.5rem; font-size: 0.9rem; }
+
+.opponents {
+  grid-area: opponents;
+  display: flex;
+  justify-content: space-around;
+  padding: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.opponent {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  text-align: center;
+  min-width: 120px;
+  border: 2px solid transparent;
+}
+.opponent.active-turn { border-color: var(--gold); box-shadow: 0 0 12px rgba(212, 175, 55, 0.6); }
+.opponent .name { font-weight: 600; }
+.opponent .team-tag { font-size: 0.7rem; color: var(--gray); }
+.opponent .hand-count {
+  margin-top: 0.3rem;
+  font-size: 0.85rem;
+  color: var(--gold);
+}
+
+.table-area {
+  grid-area: table;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 1rem;
+  min-height: 180px;
+}
+
+.my-area {
+  grid-area: myarea;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+.my-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.my-info .badge {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  background: var(--gold);
+  color: var(--black);
+  font-weight: 700;
+}
+
+.cards-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-height: 110px;
+  align-items: center;
+  padding: 0.5rem 0;
+}
+
+/* === Cartas === */
+.card-game {
+  width: 70px;
+  height: 100px;
+  background: white;
+  color: var(--black);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 0.4rem;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+}
+.card-game:hover { transform: translateY(-4px); }
+.card-game.selected {
+  transform: translateY(-8px);
+  box-shadow: 0 0 0 3px var(--gold), 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+.card-game.disabled { opacity: 0.6; cursor: not-allowed; }
+.card-game.disabled:hover { transform: none; }
+.card-game .rank { font-size: 1.4rem; }
+.card-game .suit { font-size: 1.6rem; align-self: flex-end; }
+.card-game.suit-corazones, .card-game.suit-diamantes { color: var(--red); }
+.card-game.suit-treboles, .card-game.suit-picas { color: var(--black); }
+
+.play-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+.play-actions button { flex: 1; }
+
+/* === Log === */
+.log-panel {
+  grid-area: log;
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  padding: 0.75rem;
+  overflow-y: auto;
+  max-height: 80vh;
+}
+.log-panel h4 { color: var(--gold); margin-bottom: 0.5rem; }
+.log-panel ul { list-style: none; }
+.log-panel li {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* === Modales === */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+.modal.hidden { display: none; }
+.modal-content {
+  background: var(--green-dark);
+  padding: 2rem;
+  border-radius: 12px;
+  text-align: center;
+  max-width: 400px;
+  border: 2px solid var(--gold);
+}
+.modal-content h2 { color: var(--gold); margin-bottom: 1rem; }
+.modal-content p { margin-bottom: 1.5rem; line-height: 1.6; }
+
+/* === Toast === */
+.toast {
+  position: fixed;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--gold);
+  color: var(--black);
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-weight: 600;
+  z-index: 200;
+  animation: slideUp 0.3s ease-out;
+}
+.toast.hidden { display: none; }
+@keyframes slideUp {
+  from { transform: translate(-50%, 20px); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
+}
+
+/* === Responsive básico === */
+@media (max-width: 768px) {
+  #screen-game {
+    grid-template-areas:
+      "header"
+      "opponents"
+      "table"
+      "myarea"
+      "log";
+    grid-template-columns: 1fr;
+  }
+  .log-panel { max-height: 200px; }
+  .card-game { width: 56px; height: 80px; padding: 0.3rem; }
+  .card-game .rank { font-size: 1.1rem; }
+  .card-game .suit { font-size: 1.3rem; }
+}
