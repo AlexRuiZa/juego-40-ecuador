@@ -88,18 +88,26 @@
     state.players.forEach(p => {
       const li = document.createElement('li');
       li.innerHTML = `
-        <span>${p.name}${p.id === ui.playerId ? ' (tú)' : ''}</span>
+        <span>${p.name}${p.id === ui.playerId ? ' (tú)' : ''}${p.isHost ? ' 👑' : ''}</span>
         <span class="badge team-${p.teamId.toLowerCase()}-badge">Equipo ${p.teamId}</span>
       `;
       list.appendChild(li);
     });
     const btn = $('#btn-start');
-    if (state.players.length === 4) {
+    const validCount = state.players.length === 2 || state.players.length === 4;
+    const mode = state.players.length === 2 ? '1 vs 1' : state.players.length === 4 ? '2 vs 2' : 'espera';
+    if (validCount && state.isHost) {
       btn.disabled = false;
-      btn.textContent = 'Iniciar partida';
+      btn.textContent = `Iniciar partida (${mode})`;
+      btn.style.display = '';
+    } else if (validCount && !state.isHost) {
+      btn.disabled = true;
+      btn.textContent = 'Esperando que el creador inicie la partida';
+      btn.style.display = '';
     } else {
       btn.disabled = true;
-      btn.textContent = `Esperando jugadores (${state.players.length}/4)`;
+      btn.textContent = `Esperando jugadores (${state.players.length}/2 o 4)`;
+      btn.style.display = '';
     }
   }
 
@@ -112,6 +120,8 @@
     $('#score-b').textContent = state.teams.B.score;
     $('#hand-number').textContent = state.handNumber;
     $('#deck-count').textContent = state.deckCount;
+    const modeEl = $('#game-mode');
+    if (modeEl) modeEl.textContent = state.gameMode || '-';
 
     const currentPlayer = state.players.find(p => p.id === state.currentPlayerId);
     $('#current-player-name').textContent = currentPlayer ? currentPlayer.name : '-';
@@ -177,7 +187,7 @@
     const container = $('#my-hand');
     container.innerHTML = '';
     if (!me || !me.hand) return;
-    const isMyTurn = state.currentPlayerId === ui.playerId;
+    const isMyTurn = state.status === 'IN_PROGRESS' && state.currentPlayerId === ui.playerId;
     me.hand.forEach((card, i) => {
       const el = createCardElement(card);
       if (!isMyTurn) el.classList.add('disabled');
@@ -213,7 +223,7 @@
 
   function updatePlayButton(state) {
     const btn = $('#btn-play');
-    const isMyTurn = state.currentPlayerId === ui.playerId;
+    const isMyTurn = state.status === 'IN_PROGRESS' && state.currentPlayerId === ui.playerId;
     const canPlay = isMyTurn && ui.selectedHandIndex !== null;
     btn.disabled = !canPlay;
     btn.textContent = isMyTurn ? 'Confirmar jugada' : 'Esperando turno...';
@@ -283,6 +293,12 @@
   socket.on('updateGameState', (state) => {
     ui.lastState = state;
 
+    // Evita que un modal anterior bloquee la siguiente mano en pantallas invitadas.
+    if (state.status === 'IN_PROGRESS') {
+      $('#modal-end-hand').classList.add('hidden');
+      $('#modal-end-game').classList.add('hidden');
+    }
+
     if (state.status === 'WAITING_PLAYERS' || state.status === 'READY') {
       showScreen('#screen-waiting');
       renderWaitingRoom(state);
@@ -292,15 +308,22 @@
 
       // Mostrar modales según estado
       if (state.status === 'HAND_FINISHED') {
-        const summary = `Marcador: Equipo A: ${state.teams.A.score} | Equipo B: ${state.teams.B.score}`;
+        const hs = state.handSummary;
+        const summary = hs
+          ? `Cartón Equipo A: ${hs.cards.A} cartas (+${hs.carton.A}) | Equipo B: ${hs.cards.B} cartas (+${hs.carton.B}).\nMarcador actual: Equipo A ${hs.scores.A} | Equipo B ${hs.scores.B}${(hs.blockedBy38.A || hs.blockedBy38.B) ? '\nRegla 38 aplicada: el cartón no cierra partida.' : ''}`
+          : `Marcador: Equipo A: ${state.teams.A.score} | Equipo B: ${state.teams.B.score}`;
         $('#end-hand-summary').textContent = summary;
+        const nextBtn = $('#btn-next-hand');
+        nextBtn.style.display = '';
+        nextBtn.disabled = false;
+        nextBtn.textContent = 'Continuar';
         $('#modal-end-hand').classList.remove('hidden');
       }
       if (state.status === 'GAME_FINISHED') {
         const winner = state.winner;
-        const summary = winner === 'EMPATE'
+        const summary = state.winnerMessage || (winner === 'EMPATE'
           ? `Empate. A: ${state.teams.A.score} | B: ${state.teams.B.score}`
-          : `Ganador: Equipo ${winner}\nA: ${state.teams.A.score} | B: ${state.teams.B.score}`;
+          : `Ganador: Equipo ${winner}\nA: ${state.teams.A.score} | B: ${state.teams.B.score}`);
         $('#end-game-summary').textContent = summary;
         $('#modal-end-game').classList.remove('hidden');
       }

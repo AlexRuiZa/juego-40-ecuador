@@ -94,7 +94,7 @@ io.on('connection', (socket) => {
       if (!state.players.some(p => p.id === socket.id)) {
         throw new Error('No perteneces a esta sala');
       }
-      gameEngine.startGame(state);
+      gameEngine.startGame(state, socket.id);
       if (typeof ack === 'function') ack({ ok: true });
       broadcastState(roomCode);
     } catch (err) {
@@ -145,7 +145,7 @@ io.on('connection', (socket) => {
     try {
       const state = roomManager.getRoom(roomCode);
       if (!state) throw new Error('Sala no encontrada');
-      gameEngine.continueToNextHand(state);
+      gameEngine.continueToNextHand(state, socket.id);
       if (typeof ack === 'function') ack({ ok: true });
       broadcastState(roomCode);
     } catch (err) {

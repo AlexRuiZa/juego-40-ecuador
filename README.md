@@ -108,3 +108,28 @@ MVP funcional del juego tradicional ecuatoriano **40**, en versión multijugador
 - No hay sonidos ni animaciones.
 
 Estas son extensiones naturales para una v2.
+
+## Actualización v3
+
+Esta versión incluye correcciones posteriores al feedback real de juego:
+
+- Modalidades 1 vs 1 y 2 vs 2.
+- Inicio de partida solo por host.
+- Ronda en cada reparto.
+- Captura por escalera.
+- Carta no levantada.
+- Finalización inmediata al llegar a 40.
+- Regla especial de 38 puntos para cartón.
+- Pop-up/resumen de fin de mano con cartón y marcador.
+
+### Ejecutar pruebas
+
+```bash
+npm test
+```
+
+
+
+## QA actualizado
+
+`npm test` ejecuta ahora la batería ampliada de 166 pruebas.

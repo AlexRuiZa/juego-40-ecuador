@@ -1,6 +1,6 @@
 // src/gameEngine.js
-// Motor del juego "40". Lógica pura: recibe estado, lo valida y lo muta.
-// No conoce sockets ni HTTP. Eso permite testearlo y mantenerlo simple.
+// Motor del juego "40 Online Ecuador".
+// Servidor autoritativo: el cliente solo envía intenciones; este módulo valida reglas y muta estado.
 
 const { createDeck, shuffle, dealCards } = require('./deck');
 
@@ -12,208 +12,310 @@ const STATES = {
   GAME_FINISHED: 'GAME_FINISHED',
 };
 
-// Puntos por evento
 const POINTS = {
   CAIDA: 2,
   LIMPIA: 2,
   RONDA: 2,
-  CARTON_BASE_CARDS: 20,    // 20 cartas = 6 puntos
+  CARTON_BASE_CARDS: 20,
   CARTON_BASE_POINTS: 6,
-  CARTON_EXTRA_PER_PAIR: 2, // cada 2 cartas adicionales = +2 puntos
+  CARTON_EXTRA_PER_PAIR: 2,
 };
 
 const WINNING_SCORE = 40;
+const VALID_PLAYER_COUNTS = [2, 4];
+const MAX_PLAYERS = 4;
 
-/**
- * Crea un nuevo estado de partida vacío.
- * Se invoca al crear la sala.
- */
 function createInitialState(roomCode) {
   return {
     roomCode,
     status: STATES.WAITING_PLAYERS,
-    players: [],          // [{ id, name, teamId, hand: [] }]
+    hostId: null,
+    gameMode: null, // '1v1' o '2v2'
+    players: [],
     teams: {
       A: { score: 0, capturedCards: [] },
       B: { score: 0, capturedCards: [] },
     },
     deck: [],
-    table: [],            // cartas en la mesa
-    currentTurn: 0,       // índice del jugador en turno
-    lastCapturer: null,   // teamId del último equipo en capturar (para asignar mesa al final)
-    lastCardPlayed: null, // última carta dejada en mesa (para detectar caída)
-    lastPlayerToPlay: null, // playerId del que jugó la última carta (no puede caerse a sí mismo)
+    table: [],
+    currentTurn: 0,
+    lastCapturer: null,
+    lastCardPlayed: null,
+    lastPlayerToPlay: null,
     handNumber: 0,
-    log: [],              // mensajes recientes (caída, limpia, etc.)
+    log: [],
     winner: null,
+    winnerMessage: null,
+    handSummary: null,
   };
 }
 
-/**
- * Agrega jugador a la sala. Asigna equipo automáticamente.
- * Reglas: máximo 4 jugadores, sin nombres duplicados.
- */
+function normalizeName(name) {
+  return String(name || '').trim();
+}
+
 function addPlayer(state, playerId, name) {
-  if (state.players.length >= 4) {
-    throw new Error('La sala está llena');
+  if (state.status !== STATES.WAITING_PLAYERS && state.status !== STATES.READY) {
+    throw new Error('La partida ya está en curso');
   }
-  if (state.players.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+  if (state.players.length >= MAX_PLAYERS) throw new Error('La sala está llena');
+
+  const cleanName = normalizeName(name);
+  if (!cleanName) throw new Error('Nombre inválido');
+  if (state.players.some(p => p.name.toLowerCase() === cleanName.toLowerCase())) {
     throw new Error('Ya existe un jugador con ese nombre');
   }
-  if (!name || !name.trim()) {
-    throw new Error('Nombre inválido');
-  }
 
-  // Asignación automática: pos 0,2 → A; pos 1,3 → B
   const position = state.players.length;
   const teamId = position % 2 === 0 ? 'A' : 'B';
+  if (!state.hostId) state.hostId = playerId;
 
-  state.players.push({
+  const player = {
     id: playerId,
-    name: name.trim(),
+    name: cleanName,
     teamId,
     hand: [],
     position,
-  });
-
-  if (state.players.length === 4) {
-    state.status = STATES.READY;
-  }
-  return state.players[state.players.length - 1];
+    connected: true,
+  };
+  state.players.push(player);
+  updateReadyStatus(state);
+  return player;
 }
 
-/**
- * Quita un jugador (desconexión). Si la partida ya empezó, se finaliza.
- */
+function updateReadyStatus(state) {
+  if (VALID_PLAYER_COUNTS.includes(state.players.length)) state.status = STATES.READY;
+  else state.status = STATES.WAITING_PLAYERS;
+}
+
 function removePlayer(state, playerId) {
-  const idx = state.players.findIndex(p => p.id === playerId);
-  if (idx === -1) return;
-  state.players.splice(idx, 1);
+  const player = state.players.find(p => p.id === playerId);
+  if (!player) return;
 
   if (state.status === STATES.IN_PROGRESS || state.status === STATES.HAND_FINISHED) {
+    player.connected = false;
     state.status = STATES.GAME_FINISHED;
+    state.winner = null;
+    state.winnerMessage = 'Partida finalizada por desconexión.';
     state.log.push('Un jugador se desconectó. Partida finalizada.');
-  } else if (state.players.length < 4) {
-    state.status = STATES.WAITING_PLAYERS;
+    return;
   }
+
+  state.players = state.players.filter(p => p.id !== playerId);
+  if (state.hostId === playerId) state.hostId = state.players[0]?.id || null;
+  state.players.forEach((p, i) => {
+    p.position = i;
+    p.teamId = i % 2 === 0 ? 'A' : 'B';
+  });
+  updateReadyStatus(state);
 }
 
-/**
- * Inicia la partida: baraja, reparte 5 a cada uno, escoge turno aleatorio.
- * Detecta rondas (3 cartas iguales en la mano).
- */
-function startGame(state) {
-  if (state.players.length !== 4) {
-    throw new Error('Se necesitan 4 jugadores para iniciar');
+function startGame(state, requesterId) {
+  if (state.status !== STATES.READY) {
+    throw new Error('La partida solo puede iniciar cuando la sala está lista');
   }
-
+  if (requesterId && requesterId !== state.hostId) {
+    throw new Error('Solo el creador de la sala puede iniciar la partida');
+  }
+  if (!VALID_PLAYER_COUNTS.includes(state.players.length)) {
+    throw new Error('La partida requiere 2 jugadores (1 vs 1) o 4 jugadores (2 vs 2)');
+  }
+  state.gameMode = state.players.length === 2 ? '1v1' : '2v2';
+  resetScores(state);
   state.status = STATES.IN_PROGRESS;
   state.handNumber = 1;
-  startNewHand(state, /*chooseRandomTurn*/ true);
+  startNewHand(state, true);
 }
 
-/**
- * Inicia una nueva mano (puede haber varias por partida hasta llegar a 40 puntos).
- * Si chooseRandomTurn=false, conserva el turno actual (sigue el mismo orden).
- */
+function resetScores(state) {
+  state.teams.A.score = 0;
+  state.teams.B.score = 0;
+  state.teams.A.capturedCards = [];
+  state.teams.B.capturedCards = [];
+  state.winner = null;
+  state.winnerMessage = null;
+  state.handSummary = null;
+  state.log = [];
+}
+
 function startNewHand(state, chooseRandomTurn = false) {
+  ensureGameNotFinished(state);
   state.deck = shuffle(createDeck());
   state.table = [];
   state.lastCapturer = null;
   state.lastCardPlayed = null;
   state.lastPlayerToPlay = null;
+  state.handSummary = null;
+  state.teams.A.capturedCards = [];
+  state.teams.B.capturedCards = [];
 
-  for (const player of state.players) {
-    player.hand = dealCards(state.deck, 5);
-  }
-
-  if (chooseRandomTurn) {
-    state.currentTurn = Math.floor(Math.random() * 4);
-  }
-
-  // Detectar rondas (3 cartas iguales en una mano recién repartida)
-  detectRondas(state);
-
+  dealNextBatch(state);
+  if (chooseRandomTurn) state.currentTurn = Math.floor(Math.random() * state.players.length);
   state.status = STATES.IN_PROGRESS;
 }
 
-/**
- * Detecta si algún jugador recibió 3 cartas del mismo rank.
- * Otorga 2 puntos al equipo correspondiente.
- */
+function dealNextBatch(state) {
+  for (const player of state.players) {
+    player.hand = dealCards(state.deck, 5);
+  }
+  detectRondas(state);
+  checkWinner(state, { source: 'ronda' });
+}
+
 function detectRondas(state) {
   for (const player of state.players) {
     const counts = {};
-    for (const card of player.hand) {
-      counts[card.rank] = (counts[card.rank] || 0) + 1;
-    }
+    for (const card of player.hand) counts[card.rank] = (counts[card.rank] || 0) + 1;
     for (const [rank, count] of Object.entries(counts)) {
       if (count >= 3) {
-        state.teams[player.teamId].score += POINTS.RONDA;
-        state.log.push(`¡Ronda de ${rank}! +2 para equipo ${player.teamId} (${player.name})`);
+        addScore(state, player.teamId, POINTS.RONDA, 'ronda');
+        state.log.push(`¡Ronda de ${rank}! +2 para ${teamLabel(state, player.teamId)} (${player.name})`);
       }
     }
   }
 }
 
-/**
- * Valida que un conjunto de cartas de mesa pueda capturarse con una carta jugada.
- * Reglas:
- *  - Si todas las cartas seleccionadas tienen el mismo valor que la jugada → captura por igualdad.
- *  - Si suman exactamente el valor de la jugada → captura por suma.
- *  - Combinada: el conjunto puede particionarse en grupos donde cada grupo
- *    o es una carta del mismo valor, o es un grupo que suma el valor.
- *
- * Implementación: usamos backtracking sobre las cartas seleccionadas para verificar
- * si se pueden particionar en subgrupos válidos.
- *
- * @returns {boolean} true si la captura es válida.
- */
-function isValidCapture(playedCard, selectedCards) {
-  if (selectedCards.length === 0) return false;
-  const target = playedCard.value;
-
-  // Caso simple: todas iguales al valor jugado
-  if (selectedCards.every(c => c.value === target)) return true;
-
-  // Caso simple: suman exacto
-  const total = selectedCards.reduce((s, c) => s + c.value, 0);
-  if (total === target) return true;
-
-  // Caso combinado: particionar en subgrupos donde cada grupo es válido
-  // (un grupo válido es: una sola carta de valor target, o un conjunto que suma target)
-  return canPartitionIntoValidGroups(selectedCards, target);
+function addScore(state, teamId, points, source) {
+  if (points <= 0) return 0;
+  state.teams[teamId].score += points;
+  return points;
 }
 
-/**
- * Backtracking: ¿se pueden agrupar todas las cartas en subgrupos
- * donde cada subgrupo suma `target`?
- * (Una carta sola que valga target es un subgrupo de tamaño 1 que suma target.)
- */
-function canPartitionIntoValidGroups(cards, target) {
-  if (cards.length === 0) return true;
+function ensureGameNotFinished(state) {
+  if (state.status === STATES.GAME_FINISHED) throw new Error('La partida ya finalizó');
+}
 
-  // Tomamos la primera carta y probamos todos los subconjuntos que la incluyen y suman target
-  const [first, ...rest] = cards;
-  const indices = rest.map((_, i) => i);
+function cardLabel(card) {
+  return `${card.rank}`;
+}
 
-  // Probar combinaciones de `rest` que junto a `first` sumen target
-  for (const combo of subsetsThatSumTo(rest, target - first.value)) {
-    const used = new Set(combo);
-    const remaining = rest.filter((_, i) => !used.has(i));
-    if (canPartitionIntoValidGroups(remaining, target)) return true;
+function teamLabel(state, teamId) {
+  if (state.gameMode === '1v1') {
+    const p = state.players.find(x => x.teamId === teamId);
+    return p ? `${p.name} / Equipo ${teamId}` : `Equipo ${teamId}`;
+  }
+  return `Equipo ${teamId}`;
+}
+
+function getWinningPlayerNames(state, teamId) {
+  return state.players.filter(p => p.teamId === teamId).map(p => p.name);
+}
+
+function buildWinnerMessage(state, winnerTeam) {
+  if (!winnerTeam || winnerTeam === 'EMPATE') return 'Partida finalizada en empate.';
+  const names = getWinningPlayerNames(state, winnerTeam);
+  if (state.gameMode === '1v1') return `🏆 ¡${names[0]} gana la partida con ${state.teams[winnerTeam].score} puntos!`;
+  return `🏆 ¡Gana el Equipo ${winnerTeam} (${names.join(' y ')}) con ${state.teams[winnerTeam].score} puntos!`;
+}
+
+function checkWinner(state) {
+  if (state.teams.A.score >= WINNING_SCORE || state.teams.B.score >= WINNING_SCORE) {
+    state.status = STATES.GAME_FINISHED;
+    state.winner = state.teams.A.score > state.teams.B.score ? 'A'
+      : state.teams.B.score > state.teams.A.score ? 'B'
+      : 'EMPATE';
+    state.winnerMessage = buildWinnerMessage(state, state.winner);
+    state.log.push(state.winnerMessage);
+    clearHandsAfterGame(state);
+    return true;
   }
   return false;
 }
 
-/**
- * Genera todos los subconjuntos de `cards` (representados por índices)
- * cuya suma de valores sea exactamente `target`. `target` puede ser 0 (subconjunto vacío).
- */
+function clearHandsAfterGame(state) {
+  for (const p of state.players) p.hand = [];
+  state.deck = [];
+}
+
+function isSequentialRunFromPlayed(playedCard, selectedCards) {
+  if (!selectedCards.length) return false;
+  const values = selectedCards.map(c => c.value).sort((a, b) => a - b);
+  if (values[0] !== playedCard.value) return false;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] !== values[i - 1] + 1) return false;
+  }
+  return true;
+}
+
+function isValidCapture(playedCard, selectedCards) {
+  if (selectedCards.length === 0) return false;
+  const target = playedCard.value;
+
+  // 1) Carta(s) igual(es): el jugador levanta la carta equivalente a la que lanza.
+  if (selectedCards.every(c => c.value === target)) return true;
+
+  // 2) Suma simple: una o varias cartas suman el valor de la carta lanzada.
+  if (selectedCards.reduce((s, c) => s + c.value, 0) === target) return true;
+
+  // 3) Escalera simple: empieza en el valor de la carta lanzada y continúa hacia arriba.
+  if (isSequentialRunFromPlayed(playedCard, selectedCards)) return true;
+
+  // 4) Captura mixta tradicional: un grupo captura por igual/suma y el resto continúa
+  //    la escalera hacia arriba. Ejemplo: jugar 7 y levantar A+6 (=7), J(8), Q(9).
+  if (canCaptureWithBaseGroupThenRun(selectedCards, target)) return true;
+
+  // 5) Capturas múltiples independientes: varios grupos, cada uno igual/suma/escalera.
+  return canPartitionIntoValidGroups(selectedCards, target);
+}
+
+function canCaptureWithBaseGroupThenRun(cards, target) {
+  if (cards.length < 2) return false;
+
+  // Probamos cada subconjunto que pueda actuar como la captura base de la carta jugada:
+  // - una carta igual al target, o
+  // - varias cartas cuya suma sea target.
+  const n = cards.length;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const base = [];
+    const rest = [];
+    for (let i = 0; i < n; i++) {
+      (mask & (1 << i) ? base : rest).push(cards[i]);
+    }
+
+    if (rest.length === 0) continue;
+    const baseIsValid = base.length === 1
+      ? base[0].value === target
+      : base.reduce((sum, c) => sum + c.value, 0) === target;
+
+    if (!baseIsValid) continue;
+    if (isConsecutiveRunStartingAt(rest, target + 1)) return true;
+  }
+  return false;
+}
+
+function isConsecutiveRunStartingAt(cards, startValue) {
+  if (!cards.length) return false;
+  const values = cards.map(c => c.value).sort((a, b) => a - b);
+  if (values[0] !== startValue) return false;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i] !== values[i - 1] + 1) return false;
+  }
+  return true;
+}
+
+function canPartitionIntoValidGroups(cards, target) {
+  if (cards.length === 0) return true;
+  const [first, ...rest] = cards;
+  for (const combo of subsetsThatSumTo(rest, target - first.value)) {
+    const used = new Set(combo);
+    const group = [first, ...combo.map(i => rest[i])];
+    const remaining = rest.filter((_, i) => !used.has(i));
+    if ((group.reduce((s, c) => s + c.value, 0) === target || isSequentialRunValues(group, target)) &&
+        canPartitionIntoValidGroups(remaining, target)) return true;
+  }
+  return false;
+}
+
+function isSequentialRunValues(cards, start) {
+  const values = cards.map(c => c.value).sort((a, b) => a - b);
+  if (values[0] !== start) return false;
+  for (let i = 1; i < values.length; i++) if (values[i] !== values[i - 1] + 1) return false;
+  return true;
+}
+
 function* subsetsThatSumTo(cards, target) {
   if (target < 0) return;
   if (target === 0) { yield []; return; }
-
   function* helper(start, remaining, acc) {
     if (remaining === 0) { yield [...acc]; return; }
     if (remaining < 0) return;
@@ -226,37 +328,71 @@ function* subsetsThatSumTo(cards, target) {
   yield* helper(0, target, []);
 }
 
-/**
- * Procesa una jugada: el jugador `playerId` juega la carta en `handIndex`
- * intentando capturar las cartas en `tableIndices`.
- *
- * @returns {object} resumen de la jugada (eventos: caida, limpia, etc.)
- */
-function playCard(state, playerId, handIndex, tableIndices = []) {
-  // Validaciones de turno y existencia
-  if (state.status !== STATES.IN_PROGRESS) {
-    throw new Error('La partida no está en curso');
-  }
-  const player = state.players[state.currentTurn];
-  if (!player || player.id !== playerId) {
-    throw new Error('No es tu turno');
-  }
-  if (handIndex < 0 || handIndex >= player.hand.length) {
-    throw new Error('Carta inválida');
-  }
+function getOpponentTeamForTurn(state, player) {
+  const nextPlayer = state.players[(state.currentTurn + 1) % state.players.length];
+  return nextPlayer?.teamId === player.teamId ? (player.teamId === 'A' ? 'B' : 'A') : nextPlayer?.teamId || (player.teamId === 'A' ? 'B' : 'A');
+}
 
-  // Validar índices de mesa
-  const tableSet = new Set(tableIndices);
-  if (tableSet.size !== tableIndices.length) {
-    throw new Error('Selección de mesa inválida (duplicados)');
+function findBestMissedCapture(playedCard, tableCards) {
+  if (!tableCards.length) return [];
+  const same = tableCards.filter(c => c.value === playedCard.value);
+  if (same.length) {
+    const run = buildRunFromPlayed(playedCard, tableCards);
+    return run.length > same.length ? run : same;
   }
+  const run = buildRunFromPlayed(playedCard, tableCards);
+  if (run.length) return run;
+  const sumCombo = findLargestSubsetSum(tableCards, playedCard.value);
+  return sumCombo || [];
+}
+
+function buildRunFromPlayed(playedCard, tableCards) {
+  const sorted = [...tableCards].sort((a, b) => a.value - b.value);
+  const byValue = new Map();
+  for (const c of sorted) if (!byValue.has(c.value)) byValue.set(c.value, c);
+  if (!byValue.has(playedCard.value)) return [];
+  const run = [];
+  let v = playedCard.value;
+  while (byValue.has(v)) {
+    run.push(byValue.get(v));
+    v += 1;
+  }
+  return run;
+}
+
+function findLargestSubsetSum(cards, target) {
+  let best = null;
+  function walk(index, acc, sum) {
+    if (sum === target) {
+      if (!best || acc.length > best.length) best = [...acc];
+      return;
+    }
+    if (sum > target || index >= cards.length) return;
+    acc.push(cards[index]);
+    walk(index + 1, acc, sum + cards[index].value);
+    acc.pop();
+    walk(index + 1, acc, sum);
+  }
+  walk(0, [], 0);
+  return best;
+}
+
+function playCard(state, playerId, handIndex, tableIndices = []) {
+  ensureGameNotFinished(state);
+  if (state.status !== STATES.IN_PROGRESS) throw new Error('La partida no está en curso');
+  const player = state.players[state.currentTurn];
+  if (!player || player.id !== playerId) throw new Error('No es tu turno');
+  if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= player.hand.length) throw new Error('Carta inválida');
+  if (!Array.isArray(tableIndices)) throw new Error('Selección de mesa inválida');
+
+  const tableSet = new Set(tableIndices);
+  if (tableSet.size !== tableIndices.length) throw new Error('Selección de mesa inválida (duplicados)');
   for (const i of tableIndices) {
-    if (i < 0 || i >= state.table.length) throw new Error('Índice de mesa inválido');
+    if (!Number.isInteger(i) || i < 0 || i >= state.table.length) throw new Error('Índice de mesa inválido');
   }
 
   const playedCard = player.hand[handIndex];
   const selectedTableCards = tableIndices.map(i => state.table[i]);
-
   const result = {
     player: player.name,
     teamId: player.teamId,
@@ -264,162 +400,155 @@ function playCard(state, playerId, handIndex, tableIndices = []) {
     captured: [],
     caida: false,
     limpia: false,
+    missedCapture: false,
+    penaltyCapturedBy: null,
     pointsEarned: 0,
   };
 
   if (selectedTableCards.length > 0) {
-    // Intento de captura: validar
-    if (!isValidCapture(playedCard, selectedTableCards)) {
-      throw new Error('Captura inválida');
-    }
-
-    // Detectar caída: el jugador captura la última carta jugada por el rival
-    // (debe ser una carta del mismo valor y debe estar entre las capturadas)
-    const isCaida =
-      state.lastCardPlayed &&
-      state.lastPlayerToPlay !== playerId &&
-      selectedTableCards.some(c => c.id === state.lastCardPlayed.id) &&
-      playedCard.value === state.lastCardPlayed.value;
-
-    // Quitar carta de la mano
-    player.hand.splice(handIndex, 1);
-
-    // Quitar cartas capturadas de la mesa (en orden descendente para no invalidar índices)
-    const sortedIndices = [...tableIndices].sort((a, b) => b - a);
-    for (const i of sortedIndices) state.table.splice(i, 1);
-
-    // Detectar limpia: la mesa quedó vacía DESPUÉS de la captura
-    const isLimpia = state.table.length === 0;
-
-    // La carta jugada también va al equipo (forma parte de la captura)
-    const allCaptured = [playedCard, ...selectedTableCards];
-    state.teams[player.teamId].capturedCards.push(...allCaptured);
-    result.captured = allCaptured;
-
-    // Aplicar puntos por caída/limpia
-    if (isCaida) {
-      state.teams[player.teamId].score += POINTS.CAIDA;
-      result.caida = true;
-      result.pointsEarned += POINTS.CAIDA;
-      state.log.push(`¡Caída! +2 para equipo ${player.teamId} (${player.name})`);
-    }
-    if (isLimpia) {
-      state.teams[player.teamId].score += POINTS.LIMPIA;
-      result.limpia = true;
-      result.pointsEarned += POINTS.LIMPIA;
-      state.log.push(`¡Limpia! +2 para equipo ${player.teamId} (${player.name})`);
-    }
-
-    state.lastCapturer = player.teamId;
-    // Tras una captura, la "última carta jugada" deja de existir (se la llevó alguien)
-    state.lastCardPlayed = null;
-    state.lastPlayerToPlay = playerId;
+    if (!isValidCapture(playedCard, selectedTableCards)) throw new Error('Captura inválida');
+    executeCapture(state, player, handIndex, tableIndices, selectedTableCards, playedCard, result);
+    if (checkWinner(state)) return result;
   } else {
-    // Sin captura: la carta jugada queda en la mesa
+    const missed = findBestMissedCapture(playedCard, state.table);
     player.hand.splice(handIndex, 1);
-    state.table.push(playedCard);
-    state.lastCardPlayed = playedCard;
-    state.lastPlayerToPlay = playerId;
-  }
-
-  // Verificar si la mano terminó (todos sin cartas y mazo vacío)
-  const allHandsEmpty = state.players.every(p => p.hand.length === 0);
-  if (allHandsEmpty) {
-    if (state.deck.length > 0) {
-      // Repartir nueva tanda de 5 cartas a cada uno (sin barajar)
-      for (const p of state.players) {
-        p.hand = dealCards(state.deck, 5);
-      }
-      // No detectamos rondas aquí (ronda solo aplica al reparto inicial de la mano)
+    if (missed.length > 0) {
+      const opponentTeam = getOpponentTeamForTurn(state, player);
+      const missedIds = new Set(missed.map(c => c.id));
+      const capturedFromTable = [];
+      state.table = state.table.filter(c => {
+        if (missedIds.has(c.id)) { capturedFromTable.push(c); return false; }
+        return true;
+      });
+      state.teams[opponentTeam].capturedCards.push(playedCard, ...capturedFromTable);
+      state.lastCapturer = opponentTeam;
+      state.lastCardPlayed = null;
+      state.lastPlayerToPlay = playerId;
+      result.missedCapture = true;
+      result.penaltyCapturedBy = opponentTeam;
+      result.captured = [playedCard, ...capturedFromTable];
+      state.log.push(`Carta no levantada: ${player.name} no capturó con ${cardLabel(playedCard)}. ${teamLabel(state, opponentTeam)} se lleva ${result.captured.length} cartas.`);
     } else {
-      // Fin de mano
-      finishHand(state);
-      return result;
+      state.table.push(playedCard);
+      state.lastCardPlayed = playedCard;
+      state.lastPlayerToPlay = playerId;
     }
   }
 
-  // Avanzar turno
-  state.currentTurn = (state.currentTurn + 1) % state.players.length;
+  if (state.status !== STATES.GAME_FINISHED) finishTurnOrHand(state);
   return result;
 }
 
-/**
- * Cierra la mano: asigna mesa al último capturador, calcula cartón,
- * verifica fin de partida o reinicia mano.
- */
+function executeCapture(state, player, handIndex, tableIndices, selectedTableCards, playedCard, result) {
+  const isCaida =
+    state.lastCardPlayed &&
+    state.lastPlayerToPlay !== player.id &&
+    selectedTableCards.some(c => c.id === state.lastCardPlayed.id) &&
+    playedCard.value === state.lastCardPlayed.value;
+
+  player.hand.splice(handIndex, 1);
+  [...tableIndices].sort((a, b) => b - a).forEach(i => state.table.splice(i, 1));
+  const isLimpia = state.table.length === 0;
+  const allCaptured = [playedCard, ...selectedTableCards];
+  state.teams[player.teamId].capturedCards.push(...allCaptured);
+  result.captured = allCaptured;
+
+  if (isCaida) {
+    addScore(state, player.teamId, POINTS.CAIDA, 'caida');
+    result.caida = true;
+    result.pointsEarned += POINTS.CAIDA;
+    state.log.push(`¡Caída! +2 para ${teamLabel(state, player.teamId)} (${player.name})`);
+  }
+  if (isLimpia) {
+    addScore(state, player.teamId, POINTS.LIMPIA, 'limpia');
+    result.limpia = true;
+    result.pointsEarned += POINTS.LIMPIA;
+    state.log.push(`¡Limpia! +2 para ${teamLabel(state, player.teamId)} (${player.name})`);
+  }
+
+  state.lastCapturer = player.teamId;
+  state.lastCardPlayed = null;
+  state.lastPlayerToPlay = player.id;
+}
+
+function finishTurnOrHand(state) {
+  if (state.status === STATES.GAME_FINISHED) return;
+  const allHandsEmpty = state.players.every(p => p.hand.length === 0);
+  if (allHandsEmpty) {
+    if (state.deck.length > 0) {
+      dealNextBatch(state);
+      if (state.status === STATES.GAME_FINISHED) return;
+    } else {
+      finishHand(state);
+      return;
+    }
+  }
+  state.currentTurn = (state.currentTurn + 1) % state.players.length;
+}
+
 function finishHand(state) {
-  // 1) Mesa restante va al último equipo que capturó
+  if (state.status === STATES.GAME_FINISHED) return;
   if (state.table.length > 0 && state.lastCapturer) {
     state.teams[state.lastCapturer].capturedCards.push(...state.table);
-    state.log.push(`Cartas restantes en mesa van al equipo ${state.lastCapturer}`);
+    state.log.push(`Cartas restantes en mesa van a ${teamLabel(state, state.lastCapturer)}`);
     state.table = [];
   }
 
-  // 2) Calcular cartón
-  const cartonA = calculateCarton(state.teams.A.capturedCards.length);
-  const cartonB = calculateCarton(state.teams.B.capturedCards.length);
+  const beforeA = state.teams.A.score;
+  const beforeB = state.teams.B.score;
+  const cardsA = state.teams.A.capturedCards.length;
+  const cardsB = state.teams.B.capturedCards.length;
+  const cartonA = beforeA >= 38 ? 0 : calculateCarton(cardsA);
+  const cartonB = beforeB >= 38 ? 0 : calculateCarton(cardsB);
   state.teams.A.score += cartonA;
   state.teams.B.score += cartonB;
-  state.log.push(
-    `Cartón → Equipo A: ${state.teams.A.capturedCards.length} cartas (+${cartonA}) | ` +
-    `Equipo B: ${state.teams.B.capturedCards.length} cartas (+${cartonB})`
-  );
 
-  // 3) Verificar fin de partida
-  if (state.teams.A.score >= WINNING_SCORE || state.teams.B.score >= WINNING_SCORE) {
-    state.status = STATES.GAME_FINISHED;
-    state.winner =
-      state.teams.A.score > state.teams.B.score ? 'A' :
-      state.teams.B.score > state.teams.A.score ? 'B' : 'EMPATE';
-    state.log.push(`¡Partida finalizada! Ganador: equipo ${state.winner}`);
-  } else {
-    state.status = STATES.HAND_FINISHED;
-    state.log.push(`Fin de mano ${state.handNumber}. Marcador: A=${state.teams.A.score} | B=${state.teams.B.score}`);
-  }
+  const blockedA = beforeA >= 38 && calculateCarton(cardsA) > 0;
+  const blockedB = beforeB >= 38 && calculateCarton(cardsB) > 0;
+  state.handSummary = {
+    handNumber: state.handNumber,
+    cards: { A: cardsA, B: cardsB },
+    carton: { A: cartonA, B: cartonB },
+    blockedBy38: { A: blockedA, B: blockedB },
+    scores: { A: state.teams.A.score, B: state.teams.B.score },
+  };
+  let summary = `Fin de mano ${state.handNumber}. Cartón → Equipo A: ${cardsA} cartas (+${cartonA}) | Equipo B: ${cardsB} cartas (+${cartonB}). Marcador: A=${state.teams.A.score} | B=${state.teams.B.score}`;
+  if (blockedA || blockedB) summary += ' Regla 38 aplicada: el cartón no cierra partida.';
+  state.log.push(summary);
+
+  if (checkWinner(state)) return;
+  state.status = STATES.HAND_FINISHED;
 }
 
-/**
- * Calcula el cartón según las reglas del MVP:
- *  - 20 cartas → 6 puntos
- *  - cada 2 cartas adicionales → +2 puntos
- * Por debajo de 20, no suma.
- */
 function calculateCarton(cardCount) {
   if (cardCount < POINTS.CARTON_BASE_CARDS) return 0;
   const extra = cardCount - POINTS.CARTON_BASE_CARDS;
-  const extraPairs = Math.floor(extra / 2);
-  return POINTS.CARTON_BASE_POINTS + extraPairs * POINTS.CARTON_EXTRA_PER_PAIR;
+  return POINTS.CARTON_BASE_POINTS + Math.floor(extra / 2) * POINTS.CARTON_EXTRA_PER_PAIR;
 }
 
-/**
- * Inicia la siguiente mano cuando una está terminada (sin reset de puntajes).
- * Limpia capturedCards de cada equipo (las cartas vuelven al mazo virtualmente).
- */
-function continueToNextHand(state) {
-  if (state.status !== STATES.HAND_FINISHED) {
-    throw new Error('Solo se puede continuar al terminar una mano');
+function continueToNextHand(state, requesterId) {
+  ensureGameNotFinished(state);
+  if (requesterId && !state.players.some(p => p.id === requesterId)) {
+    throw new Error('No perteneces a esta sala');
   }
+  if (state.status !== STATES.HAND_FINISHED) throw new Error('Solo se puede continuar al terminar una mano');
   state.handNumber += 1;
-  state.teams.A.capturedCards = [];
-  state.teams.B.capturedCards = [];
-  // Rotar turno: empieza el siguiente al que empezó la mano anterior
   state.currentTurn = (state.currentTurn + 1) % state.players.length;
-  startNewHand(state, /*chooseRandomTurn*/ false);
+  startNewHand(state, false);
 }
 
-/**
- * Genera la "vista pública" del estado (sin manos ajenas).
- * Cada cliente recibe su propia mano completa pero solo el conteo de las demás.
- */
 function getPublicState(state, viewerId) {
   return {
     roomCode: state.roomCode,
     status: state.status,
+    hostId: state.hostId,
+    isHost: viewerId === state.hostId,
+    gameMode: state.players.length === 2 ? '1v1' : state.players.length === 4 ? '2v2' : state.gameMode,
     handNumber: state.handNumber,
     deckCount: state.deck.length,
     table: state.table,
     currentTurn: state.currentTurn,
-    currentPlayerId: state.players[state.currentTurn]?.id || null,
+    currentPlayerId: state.status === STATES.GAME_FINISHED ? null : state.players[state.currentTurn]?.id || null,
     teams: {
       A: { score: state.teams.A.score, capturedCount: state.teams.A.capturedCards.length },
       B: { score: state.teams.B.score, capturedCount: state.teams.B.capturedCards.length },
@@ -429,17 +558,23 @@ function getPublicState(state, viewerId) {
       name: p.name,
       teamId: p.teamId,
       handCount: p.hand.length,
-      hand: p.id === viewerId ? p.hand : null, // solo el viewer ve su mano
+      hand: p.id === viewerId ? p.hand : null,
       position: p.position,
+      connected: p.connected !== false,
+      isHost: p.id === state.hostId,
     })),
-    log: state.log.slice(-10), // últimos 10 mensajes
+    log: state.log.slice(-15),
     winner: state.winner,
+    winnerMessage: state.winnerMessage,
+    handSummary: state.handSummary,
     lastCardPlayed: state.lastCardPlayed,
   };
 }
 
 module.exports = {
   STATES,
+  POINTS,
+  WINNING_SCORE,
   createInitialState,
   addPlayer,
   removePlayer,
@@ -448,5 +583,11 @@ module.exports = {
   continueToNextHand,
   getPublicState,
   isValidCapture,
+  isSequentialRunFromPlayed,
+  findBestMissedCapture,
   calculateCarton,
+  finishHand,
+  checkWinner,
+  detectRondas,
+  dealNextBatch,
 };
