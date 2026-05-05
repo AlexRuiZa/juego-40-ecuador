@@ -314,3 +314,48 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   .card-game .rank { font-size: 1.1rem; }
   .card-game .suit { font-size: 1.3rem; }
 }
+
+/* === Tema visual Ecuador / mesa tricolor === */
+:root {
+  --ecu-yellow: #f2c230;
+  --ecu-blue: #153e90;
+  --ecu-red: #b9272d;
+  --table-blue: #102f6f;
+  --table-red: #7d1720;
+}
+
+body {
+  background: linear-gradient(160deg, #f1c94a 0%, #183f8e 48%, #9b1f2b 100%);
+}
+
+#screen-game {
+  background:
+    radial-gradient(ellipse at center, rgba(16,47,111,0.92) 0%, rgba(20,55,125,0.88) 40%, rgba(125,23,32,0.95) 100%),
+    linear-gradient(180deg, var(--ecu-yellow) 0 18%, var(--ecu-blue) 18% 68%, var(--ecu-red) 68% 100%);
+}
+
+.game-header, .my-area, .table-area, .log-panel, .opponent, .card {
+  backdrop-filter: blur(4px);
+  border: 1px solid rgba(242, 194, 48, 0.28);
+}
+
+.card-game.missed-available {
+  outline: 4px solid #f2c230;
+  box-shadow: 0 0 18px rgba(242, 194, 48, 0.95), 0 0 0 5px rgba(185, 39, 45, 0.45);
+  transform: translateY(-4px) scale(1.04);
+}
+
+.alert-missed {
+  border: 3px solid var(--ecu-yellow);
+  background: linear-gradient(160deg, rgba(16,47,111,0.98), rgba(125,23,32,0.98));
+  box-shadow: 0 0 40px rgba(242, 194, 48, 0.4);
+}
+
+.toast {
+  min-width: 280px;
+  text-align: center;
+  line-height: 1.35;
+}
+.toast-success { background: rgba(21, 62, 144, 0.94); border: 2px solid var(--ecu-yellow); }
+.toast-warning { background: rgba(185, 39, 45, 0.96); border: 2px solid var(--ecu-yellow); }
+.toast-info { background: rgba(0, 0, 0, 0.86); border: 2px solid var(--ecu-yellow); }

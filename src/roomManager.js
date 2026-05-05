@@ -27,8 +27,26 @@ function createRoom() {
 }
 
 function getRoom(code) {
-  return rooms.get(code) || null;
+  const state = rooms.get(code) || null;
+  if (state) state.lastActivityAt = Date.now();
+  return state;
 }
+
+function cleanupInactiveRooms({ emptyTtlMs = 10 * 60 * 1000, waitingTtlMs = 2 * 60 * 60 * 1000 } = {}) {
+  const now = Date.now();
+  let removed = 0;
+  for (const [code, state] of rooms.entries()) {
+    const activePlayers = state.players.filter(p => p.connected !== false).length;
+    const idleMs = now - (state.lastActivityAt || state.createdAt || now);
+    const isWaiting = state.status === 'WAITING_PLAYERS' || state.status === 'READY';
+    if ((activePlayers === 0 && idleMs > emptyTtlMs) || (isWaiting && idleMs > waitingTtlMs)) {
+      rooms.delete(code);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 
 function deleteRoom(code) {
   rooms.delete(code);
@@ -50,4 +68,5 @@ module.exports = {
   getRoom,
   deleteRoom,
   findRoomByPlayerId,
+  cleanupInactiveRooms,
 };

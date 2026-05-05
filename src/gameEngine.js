@@ -47,6 +47,9 @@ function createInitialState(roomCode) {
     winner: null,
     winnerMessage: null,
     handSummary: null,
+    pendingMissedCapture: null,
+    createdAt: Date.now(),
+    lastActivityAt: Date.now(),
   };
 }
 
@@ -146,6 +149,7 @@ function startNewHand(state, chooseRandomTurn = false) {
   state.lastCardPlayed = null;
   state.lastPlayerToPlay = null;
   state.handSummary = null;
+  state.pendingMissedCapture = null;
   state.teams.A.capturedCards = [];
   state.teams.B.capturedCards = [];
 
@@ -227,65 +231,24 @@ function clearHandsAfterGame(state) {
   state.deck = [];
 }
 
-function isSequentialRunFromPlayed(playedCard, selectedCards) {
-  if (!selectedCards.length) return false;
-  const values = selectedCards.map(c => c.value).sort((a, b) => a - b);
-  if (values[0] !== playedCard.value) return false;
-  for (let i = 1; i < values.length; i++) {
-    if (values[i] !== values[i - 1] + 1) return false;
-  }
-  return true;
+function isNumericCaptureCard(card) {
+  return card.value >= 1 && card.value <= 7;
 }
 
-function isValidCapture(playedCard, selectedCards) {
-  if (selectedCards.length === 0) return false;
-  const target = playedCard.value;
-
-  // 1) Carta(s) igual(es): el jugador levanta la carta equivalente a la que lanza.
-  if (selectedCards.every(c => c.value === target)) return true;
-
-  // 2) Suma simple: una o varias cartas suman el valor de la carta lanzada.
-  if (selectedCards.reduce((s, c) => s + c.value, 0) === target) return true;
-
-  // 3) Escalera simple: empieza en el valor de la carta lanzada y continúa hacia arriba.
-  if (isSequentialRunFromPlayed(playedCard, selectedCards)) return true;
-
-  // 4) Captura mixta tradicional: un grupo captura por igual/suma y el resto continúa
-  //    la escalera hacia arriba. Ejemplo: jugar 7 y levantar A+6 (=7), J(8), Q(9).
-  if (canCaptureWithBaseGroupThenRun(selectedCards, target)) return true;
-
-  // 5) Capturas múltiples independientes: varios grupos, cada uno igual/suma/escalera.
-  return canPartitionIntoValidGroups(selectedCards, target);
+function areNumericCards(cards) {
+  return cards.every(isNumericCaptureCard);
 }
 
-function canCaptureWithBaseGroupThenRun(cards, target) {
-  if (cards.length < 2) return false;
-
-  // Probamos cada subconjunto que pueda actuar como la captura base de la carta jugada:
-  // - una carta igual al target, o
-  // - varias cartas cuya suma sea target.
-  const n = cards.length;
-  for (let mask = 1; mask < (1 << n); mask++) {
-    const base = [];
-    const rest = [];
-    for (let i = 0; i < n; i++) {
-      (mask & (1 << i) ? base : rest).push(cards[i]);
-    }
-
-    if (rest.length === 0) continue;
-    const baseIsValid = base.length === 1
-      ? base[0].value === target
-      : base.reduce((sum, c) => sum + c.value, 0) === target;
-
-    if (!baseIsValid) continue;
-    if (isConsecutiveRunStartingAt(rest, target + 1)) return true;
-  }
-  return false;
+function sortedValues(cards) {
+  return cards.map(c => c.value).sort((a, b) => a - b);
 }
 
-function isConsecutiveRunStartingAt(cards, startValue) {
-  if (!cards.length) return false;
-  const values = cards.map(c => c.value).sort((a, b) => a - b);
+function hasDuplicates(values) {
+  return new Set(values).size !== values.length;
+}
+
+function isSequentialValues(values, startValue) {
+  if (!values.length) return false;
   if (values[0] !== startValue) return false;
   for (let i = 1; i < values.length; i++) {
     if (values[i] !== values[i - 1] + 1) return false;
@@ -293,92 +256,202 @@ function isConsecutiveRunStartingAt(cards, startValue) {
   return true;
 }
 
-function canPartitionIntoValidGroups(cards, target) {
-  if (cards.length === 0) return true;
-  const [first, ...rest] = cards;
-  for (const combo of subsetsThatSumTo(rest, target - first.value)) {
-    const used = new Set(combo);
-    const group = [first, ...combo.map(i => rest[i])];
-    const remaining = rest.filter((_, i) => !used.has(i));
-    if ((group.reduce((s, c) => s + c.value, 0) === target || isSequentialRunValues(group, target)) &&
-        canPartitionIntoValidGroups(remaining, target)) return true;
+function isSequentialRunFromPlayed(playedCard, selectedCards) {
+  const values = sortedValues(selectedCards);
+  if (hasDuplicates(values)) return false;
+  return isSequentialValues(values, playedCard.value);
+}
+
+function isValidSumGroup(playedCard, cards) {
+  if (!cards.length) return false;
+  if (!isNumericCaptureCard(playedCard)) return false;
+  if (!areNumericCards(cards)) return false;
+  return cards.reduce((sum, c) => sum + c.value, 0) === playedCard.value;
+}
+
+function isValidBaseGroup(playedCard, cards) {
+  if (!cards.length) return false;
+  if (cards.length === 1 && cards[0].value === playedCard.value) return true;
+  return isValidSumGroup(playedCard, cards);
+}
+
+function isConsecutiveRunStartingAt(cards, startValue) {
+  if (!cards.length) return false;
+  const values = sortedValues(cards);
+  if (hasDuplicates(values)) return false;
+  return isSequentialValues(values, startValue);
+}
+
+function canCaptureWithBaseGroupThenRun(playedCard, cards) {
+  if (cards.length < 2) return false;
+  const n = cards.length;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const base = [];
+    const rest = [];
+    for (let i = 0; i < n; i++) {
+      (mask & (1 << i) ? base : rest).push(cards[i]);
+    }
+    if (!rest.length) continue;
+    if (!isValidBaseGroup(playedCard, base)) continue;
+    if (isConsecutiveRunStartingAt(rest, playedCard.value + 1)) return true;
   }
   return false;
 }
 
-function isSequentialRunValues(cards, start) {
-  const values = cards.map(c => c.value).sort((a, b) => a - b);
-  if (values[0] !== start) return false;
-  for (let i = 1; i < values.length; i++) if (values[i] !== values[i - 1] + 1) return false;
-  return true;
+function isValidIndependentGroup(playedCard, cards) {
+  if (!cards.length) return false;
+  if (cards.every(c => c.value === playedCard.value)) return true;
+  if (isValidSumGroup(playedCard, cards)) return true;
+  if (isSequentialRunFromPlayed(playedCard, cards)) return true;
+  return false;
 }
 
-function* subsetsThatSumTo(cards, target) {
-  if (target < 0) return;
-  if (target === 0) { yield []; return; }
-  function* helper(start, remaining, acc) {
-    if (remaining === 0) { yield [...acc]; return; }
-    if (remaining < 0) return;
-    for (let i = start; i < cards.length; i++) {
-      acc.push(i);
-      yield* helper(i + 1, remaining - cards[i].value, acc);
-      acc.pop();
+function canPartitionIntoValidGroups(playedCard, cards) {
+  if (!cards.length) return true;
+
+  // Tomamos la primera carta restante y probamos todos los grupos que la incluyen.
+  const first = cards[0];
+  const rest = cards.slice(1);
+  const n = rest.length;
+  for (let mask = 0; mask < (1 << n); mask++) {
+    const group = [first];
+    const remaining = [];
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) group.push(rest[i]);
+      else remaining.push(rest[i]);
+    }
+    if (isValidIndependentGroup(playedCard, group) && canPartitionIntoValidGroups(playedCard, remaining)) {
+      return true;
     }
   }
-  yield* helper(0, target, []);
+  return false;
 }
 
-function getOpponentTeamForTurn(state, player) {
-  const nextPlayer = state.players[(state.currentTurn + 1) % state.players.length];
-  return nextPlayer?.teamId === player.teamId ? (player.teamId === 'A' ? 'B' : 'A') : nextPlayer?.teamId || (player.teamId === 'A' ? 'B' : 'A');
+function isValidCapture(playedCard, selectedCards) {
+  if (selectedCards.length === 0) return false;
+
+  // 1) Carta(s) igual(es). Se permite más de una si existen duplicados en mesa.
+  if (selectedCards.every(c => c.value === playedCard.value)) return true;
+
+  // 2) Suma: solo aplica si la carta lanzada es A-7 y todos los sumandos son A-7.
+  //    Puede tener 2, 3, 4 o más cartas.
+  if (isValidSumGroup(playedCard, selectedCards)) return true;
+
+  // 3) Escalera simple: numérica, de letras o combinada, continua desde la carta lanzada.
+  if (isSequentialRunFromPlayed(playedCard, selectedCards)) return true;
+
+  // 4) Captura mixta: base por igual o suma, seguida por escalera continua posterior.
+  if (canCaptureWithBaseGroupThenRun(playedCard, selectedCards)) return true;
+
+  // 5) Varias capturas independientes válidas en una sola jugada.
+  //    Ejemplo: jugar 5 y levantar 2+3 y A+4.
+  if (canPartitionIntoValidGroups(playedCard, selectedCards)) return true;
+
+  return false;
+}
+
+function findAllSubsets(cards) {
+  const subsets = [];
+  const n = cards.length;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const subset = [];
+    for (let i = 0; i < n; i++) if (mask & (1 << i)) subset.push(cards[i]);
+    subsets.push(subset);
+  }
+  return subsets;
+}
+
+function compareCaptureCandidates(a, b) {
+  if (a.length !== b.length) return a.length - b.length;
+  const sumA = a.reduce((s, c) => s + c.value, 0);
+  const sumB = b.reduce((s, c) => s + c.value, 0);
+  return sumA - sumB;
 }
 
 function findBestMissedCapture(playedCard, tableCards) {
-  if (!tableCards.length) return [];
-  const same = tableCards.filter(c => c.value === playedCard.value);
-  if (same.length) {
-    const run = buildRunFromPlayed(playedCard, tableCards);
-    return run.length > same.length ? run : same;
-  }
-  const run = buildRunFromPlayed(playedCard, tableCards);
-  if (run.length) return run;
-  const sumCombo = findLargestSubsetSum(tableCards, playedCard.value);
-  return sumCombo || [];
-}
-
-function buildRunFromPlayed(playedCard, tableCards) {
-  const sorted = [...tableCards].sort((a, b) => a.value - b.value);
-  const byValue = new Map();
-  for (const c of sorted) if (!byValue.has(c.value)) byValue.set(c.value, c);
-  if (!byValue.has(playedCard.value)) return [];
-  const run = [];
-  let v = playedCard.value;
-  while (byValue.has(v)) {
-    run.push(byValue.get(v));
-    v += 1;
-  }
-  return run;
-}
-
-function findLargestSubsetSum(cards, target) {
-  let best = null;
-  function walk(index, acc, sum) {
-    if (sum === target) {
-      if (!best || acc.length > best.length) best = [...acc];
-      return;
+  let best = [];
+  for (const subset of findAllSubsets(tableCards)) {
+    if (isValidCapture(playedCard, subset) && compareCaptureCandidates(subset, best) > 0) {
+      best = subset;
     }
-    if (sum > target || index >= cards.length) return;
-    acc.push(cards[index]);
-    walk(index + 1, acc, sum + cards[index].value);
-    acc.pop();
-    walk(index + 1, acc, sum);
   }
-  walk(0, [], 0);
   return best;
+}
+
+function getOmittedCaptureCards(playedCard, originalTableCards, selectedTableCards) {
+  const best = findBestMissedCapture(playedCard, originalTableCards);
+  if (!best.length) return [];
+  const selectedIds = new Set(selectedTableCards.map(c => c.id));
+  return best.filter(c => !selectedIds.has(c.id));
+}
+
+function getOpponentTeamId(player) {
+  return player.teamId === 'A' ? 'B' : 'A';
+}
+
+function getEligibleOpponentPlayer(state, player) {
+  const opponentTeam = getOpponentTeamId(player);
+  for (let offset = 1; offset <= state.players.length; offset++) {
+    const candidate = state.players[(state.currentTurn + offset) % state.players.length];
+    if (candidate && candidate.teamId === opponentTeam) return candidate;
+  }
+  return null;
+}
+
+function setPendingMissedCapture(state, player, playedCard, cards, reason) {
+  if (!cards.length) return;
+  const eligible = getEligibleOpponentPlayer(state, player);
+  if (!eligible) return;
+  state.pendingMissedCapture = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    fromPlayerId: player.id,
+    fromPlayerName: player.name,
+    failedTeamId: player.teamId,
+    eligiblePlayerId: eligible.id,
+    eligiblePlayerName: eligible.name,
+    eligibleTeamId: eligible.teamId,
+    cardIds: cards.map(c => c.id),
+    cardLabels: cards.map(cardLabel),
+    reason,
+  };
+  state.log.push(`NO!! ${player.name} dejó cartas en la mesa. ${eligible.name} / Equipo ${eligible.teamId} puede recogerlas sin perder su turno.`);
+}
+
+function claimMissedCapture(state, playerId) {
+  ensureGameNotFinished(state);
+  if (state.status !== STATES.IN_PROGRESS) throw new Error('La partida no está en curso');
+  const pending = state.pendingMissedCapture;
+  if (!pending) throw new Error('No hay cartas pendientes por recoger');
+  if (pending.eligiblePlayerId !== playerId) throw new Error('No estás habilitado para recoger estas cartas');
+
+  const ids = new Set(pending.cardIds);
+  const claimed = [];
+  state.table = state.table.filter(card => {
+    if (ids.has(card.id)) {
+      claimed.push(card);
+      return false;
+    }
+    return true;
+  });
+  if (!claimed.length) {
+    state.pendingMissedCapture = null;
+    throw new Error('Las cartas pendientes ya no están disponibles');
+  }
+
+  state.teams[pending.eligibleTeamId].capturedCards.push(...claimed);
+  state.lastCapturer = pending.eligibleTeamId;
+  state.log.push(`SI!! ${pending.eligiblePlayerName} recogió ${claimed.length} carta(s) que quedaron en la mesa.`);
+  state.pendingMissedCapture = null;
+  if (state.status !== STATES.GAME_FINISHED) finishTurnOrHand(state);
+  return { claimed, teamId: pending.eligibleTeamId };
 }
 
 function playCard(state, playerId, handIndex, tableIndices = []) {
   ensureGameNotFinished(state);
+  if (state.pendingMissedCapture) {
+    const pending = state.pendingMissedCapture;
+    throw new Error(`Hay cartas no levantadas pendientes. ${pending.eligiblePlayerName} debe recogerlas o descartarlas antes de continuar.`);
+  }
   if (state.status !== STATES.IN_PROGRESS) throw new Error('La partida no está en curso');
   const player = state.players[state.currentTurn];
   if (!player || player.id !== playerId) throw new Error('No es tu turno');
@@ -391,6 +464,7 @@ function playCard(state, playerId, handIndex, tableIndices = []) {
     if (!Number.isInteger(i) || i < 0 || i >= state.table.length) throw new Error('Índice de mesa inválido');
   }
 
+  const originalTable = [...state.table];
   const playedCard = player.hand[handIndex];
   const selectedTableCards = tableIndices.map(i => state.table[i]);
   const result = {
@@ -401,41 +475,35 @@ function playCard(state, playerId, handIndex, tableIndices = []) {
     caida: false,
     limpia: false,
     missedCapture: false,
+    pendingMissedCapture: null,
     penaltyCapturedBy: null,
     pointsEarned: 0,
   };
 
   if (selectedTableCards.length > 0) {
     if (!isValidCapture(playedCard, selectedTableCards)) throw new Error('Captura inválida');
+    const omitted = getOmittedCaptureCards(playedCard, originalTable, selectedTableCards);
     executeCapture(state, player, handIndex, tableIndices, selectedTableCards, playedCard, result);
+    if (omitted.length) {
+      setPendingMissedCapture(state, player, playedCard, omitted, 'partial_capture');
+      result.missedCapture = true;
+      result.pendingMissedCapture = state.pendingMissedCapture;
+    }
     if (checkWinner(state)) return result;
   } else {
-    const missed = findBestMissedCapture(playedCard, state.table);
+    const missed = findBestMissedCapture(playedCard, originalTable);
     player.hand.splice(handIndex, 1);
+    state.table.push(playedCard);
+    state.lastCardPlayed = playedCard;
+    state.lastPlayerToPlay = playerId;
     if (missed.length > 0) {
-      const opponentTeam = getOpponentTeamForTurn(state, player);
-      const missedIds = new Set(missed.map(c => c.id));
-      const capturedFromTable = [];
-      state.table = state.table.filter(c => {
-        if (missedIds.has(c.id)) { capturedFromTable.push(c); return false; }
-        return true;
-      });
-      state.teams[opponentTeam].capturedCards.push(playedCard, ...capturedFromTable);
-      state.lastCapturer = opponentTeam;
-      state.lastCardPlayed = null;
-      state.lastPlayerToPlay = playerId;
+      setPendingMissedCapture(state, player, playedCard, [playedCard, ...missed], 'no_capture');
       result.missedCapture = true;
-      result.penaltyCapturedBy = opponentTeam;
-      result.captured = [playedCard, ...capturedFromTable];
-      state.log.push(`Carta no levantada: ${player.name} no capturó con ${cardLabel(playedCard)}. ${teamLabel(state, opponentTeam)} se lleva ${result.captured.length} cartas.`);
-    } else {
-      state.table.push(playedCard);
-      state.lastCardPlayed = playedCard;
-      state.lastPlayerToPlay = playerId;
+      result.pendingMissedCapture = state.pendingMissedCapture;
     }
   }
 
-  if (state.status !== STATES.GAME_FINISHED) finishTurnOrHand(state);
+  if (state.status !== STATES.GAME_FINISHED && !state.pendingMissedCapture) finishTurnOrHand(state);
   return result;
 }
 
@@ -568,6 +636,7 @@ function getPublicState(state, viewerId) {
     winnerMessage: state.winnerMessage,
     handSummary: state.handSummary,
     lastCardPlayed: state.lastCardPlayed,
+    pendingMissedCapture: state.pendingMissedCapture,
   };
 }
 
@@ -580,6 +649,7 @@ module.exports = {
   removePlayer,
   startGame,
   playCard,
+  claimMissedCapture,
   continueToNextHand,
   getPublicState,
   isValidCapture,

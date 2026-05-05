@@ -1,88 +1,53 @@
-# QA Report — 40 Online Ecuador v4.1 / 166 Tests
+# QA Report — 40 Online Ecuador
 
-## Estado final
+Versión: v5 production action points
+Fecha: 2026-05-05
 
-- Total de pruebas ejecutadas: **166**
-- Pruebas aprobadas: **166**
-- Pruebas fallidas: **0**
-- Resultado: **APROBADO**
+## Resultado ejecutivo
 
-## Corrección adicional detectada durante QA ampliado
+- `npm test`: 166 / 166 aprobados
+- `npm run test:regression`: 166 / 166 aprobados
+- `npm start`: OK
+- `/health`: OK
 
-Durante la ampliación de la batería de 33 a 166 pruebas se detectó un punto de robustez:
+## Cambios cubiertos
 
-- `startGame()` podía ser invocado nuevamente sobre una sala en estado no listo, por ejemplo luego de una finalización por desconexión si se llamaba directamente desde el backend.
+1. Captura por suma solo para A–7, con 2, 3, 4 o más cartas.
+2. Bloqueo de sumas con J, Q y K.
+3. Captura por escalera numérica, letras y combinada.
+4. Captura mixta: suma o igual + escalera continua posterior.
+5. Carta no levantada: ya no se entrega automáticamente al rival.
+6. Carta no levantada: se genera oportunidad pendiente para el rival/equipo contrario.
+7. El rival puede recoger cartas pendientes sin perder su turno normal.
+8. Mensajes visuales diferenciados:
+   - `NO!! Dejaste cartas en la mesa!`
+   - `SI!! Quedaron cartas en la mesa para ti!`
+9. Pop-up visual y cartas resaltadas para carta no levantada.
+10. Tema visual de mesa inspirado en la bandera de Ecuador.
+11. Limpieza periódica de salas inactivas/vacías.
+12. Validación de mazo de 40 cartas: A–7, J, Q, K, cuatro por valor.
 
-### Fix aplicado
+## Cobertura de pruebas
 
-- `startGame()` ahora solo permite iniciar cuando la sala está en estado `READY`.
-- Esto protege contra reinicios no autorizados o estados manipulados.
+La batería de 166 tests cubre:
 
-## Baterías ejecutadas
+- Mazo de 40 cartas.
+- 1v1 y 2v2.
+- Inicio solo por host.
+- Sumas válidas e inválidas.
+- Escaleras válidas e inválidas.
+- Capturas mixtas.
+- Capturas parciales y cartas no levantadas.
+- Reclamo de cartas no levantadas por rival.
+- Ronda en repartos iniciales y posteriores.
+- Caída, limpia y caída+limpia.
+- Cartón.
+- Regla de 38 puntos.
+- Fin de partida en 40.
+- Protección contra jugadas manipuladas.
+- Limpieza de salas antiguas.
+- Regresión general.
 
-### 1. Batería funcional normal
-Incluye:
+## Estado
 
-- Inicio 1v1 y 2v2
-- Asignación de equipos
-- Mesa inicial vacía
-- Reparto de cartas
-- Captura por carta igual
-- Captura por suma
-- Captura por escalera
-- Captura mixta: suma + escalera
-- Limpia
-- Caída
-- Caída + limpia
-- Ronda
-- Cartón
-- Continuación de mano
-- Victoria a 40 puntos
-- Regla especial de 38 puntos
-
-### 2. Batería de errores y manipulación
-Incluye:
-
-- Nombres duplicados
-- Jugador 5 no permitido
-- Inicio con 1 o 3 jugadores
-- Inicio por jugador no host
-- Jugar fuera de turno
-- Índices de mano inválidos
-- Índices de mesa inválidos
-- Índices duplicados
-- Capturas inválidas
-- Intentos de jugar en estados incorrectos
-- Continuar mano sin pertenecer a sala
-- Continuar luego de partida finalizada
-- Intento de reinicio irregular de partida
-
-### 3. Batería extrema y regresión
-Incluye:
-
-- Mano completa 1v1
-- Mano completa 2v2
-- Repartos posteriores
-- Ronda en manos posteriores
-- Múltiples rondas simultáneas
-- Cartón con empate y desempate
-- Regla de 38 puntos con cartón bloqueado
-- Escalera desordenada
-- Captura mixta desordenada
-- Captura parcial sin capturar cartas no seleccionadas
-- Turnos en 2v2
-- Estado público sin revelar mano ajena
-- Límite de log visible
-- Desconexiones
-
-## Resultado técnico
-
-```txt
-QA RESULT: 166/166 passed, 0 failed
-npm start: OK
-/health: OK
-```
-
-## Conclusión
-
-La versión queda aprobada para reemplazar archivos en el proyecto oficial conectado a GitHub y avanzar luego con commit/push y despliegue en Railway.
+Aprobado para subir a GitHub y Railway.

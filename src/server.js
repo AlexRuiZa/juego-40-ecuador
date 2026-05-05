@@ -140,6 +140,30 @@ io.on('connection', (socket) => {
     }
   });
 
+
+  // Recoger cartas no levantadas sin consumir turno normal
+  socket.on('claimMissedCapture', ({ roomCode }, ack) => {
+    try {
+      const state = roomManager.getRoom(roomCode);
+      if (!state) throw new Error('Sala no encontrada');
+      const result = gameEngine.claimMissedCapture(state, socket.id);
+      if (typeof ack === 'function') ack({ ok: true, result });
+      broadcastState(roomCode);
+
+      if (state.status === gameEngine.STATES.GAME_FINISHED) {
+        io.to(roomCode).emit('endGame', { winner: state.winner, teams: state.teams });
+      } else if (state.status === gameEngine.STATES.HAND_FINISHED) {
+        io.to(roomCode).emit('endHand', {
+          handNumber: state.handNumber,
+          teams: { A: { score: state.teams.A.score }, B: { score: state.teams.B.score } },
+        });
+      }
+    } catch (err) {
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+      sendError(socket, err.message);
+    }
+  });
+
   // Continuar a la siguiente mano (cuando la mano terminó pero la partida no)
   socket.on('nextHand', ({ roomCode }, ack) => {
     try {
@@ -173,6 +197,11 @@ io.on('connection', (socket) => {
     }
   });
 });
+
+setInterval(() => {
+  const removed = roomManager.cleanupInactiveRooms();
+  if (removed > 0) console.log(`[cleanup] Salas inactivas eliminadas: ${removed}`);
+}, 5 * 60 * 1000).unref();
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

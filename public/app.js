@@ -42,6 +42,14 @@
     showToast(msg);
   };
 
+  const showVisualAlert = (title, message, kind = 'info', ms = 2600) => {
+    const toast = $('#toast');
+    toast.innerHTML = `<strong>${title}</strong><br>${message}`;
+    toast.className = `toast toast-${kind}`;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), ms);
+  };
+
   // ============================
   // Lobby
   // ============================
@@ -178,6 +186,9 @@
     state.table.forEach((card, i) => {
       const el = createCardElement(card);
       if (ui.selectedTableIndices.has(i)) el.classList.add('selected');
+      if (state.pendingMissedCapture && state.pendingMissedCapture.cardIds.includes(card.id)) {
+        el.classList.add('missed-available');
+      }
       el.addEventListener('click', () => toggleTableSelection(i));
       container.appendChild(el);
     });
@@ -223,6 +234,14 @@
 
   function updatePlayButton(state) {
     const btn = $('#btn-play');
+    const pending = state.pendingMissedCapture;
+    if (pending) {
+      btn.disabled = true;
+      btn.textContent = pending.eligiblePlayerId === ui.playerId
+        ? 'Recoge primero las cartas disponibles'
+        : 'Esperando cartas no levantadas...';
+      return;
+    }
     const isMyTurn = state.status === 'IN_PROGRESS' && state.currentPlayerId === ui.playerId;
     const canPlay = isMyTurn && ui.selectedHandIndex !== null;
     btn.disabled = !canPlay;
@@ -272,7 +291,11 @@
       if (r.caida) events.push('¡CAÍDA! +2');
       if (r.limpia) events.push('¡LIMPIA! +2');
       if (r.captured.length > 0) events.push(`Capturaste ${r.captured.length} cartas`);
-      if (events.length) showToast(events.join(' · '));
+      if (r.missedCapture) {
+        showVisualAlert('NO!! Dejaste cartas en la mesa!', 'Tu oponente tendrá la oportunidad de recogerlas.', 'warning', 4200);
+      } else if (events.length) {
+        showVisualAlert('Jugada registrada', events.join(' · '), 'success');
+      }
       clearSelection();
     });
   });
@@ -285,6 +308,18 @@
       if (!res.ok) showError(res.error);
       $('#modal-end-hand').classList.add('hidden');
     });
+  });
+
+  $('#btn-claim-missed').addEventListener('click', () => {
+    socket.emit('claimMissedCapture', { roomCode: ui.roomCode }, (res) => {
+      if (!res.ok) return showError(res.error);
+      $('#modal-missed-capture').classList.add('hidden');
+      showVisualAlert('Cartas recogidas', 'No perdiste tu turno normal.', 'success');
+    });
+  });
+
+  $('#btn-close-missed').addEventListener('click', () => {
+    $('#modal-missed-capture').classList.add('hidden');
   });
 
   // ============================
@@ -305,6 +340,21 @@
     } else if (state.status === 'IN_PROGRESS' || state.status === 'HAND_FINISHED' || state.status === 'GAME_FINISHED') {
       showScreen('#screen-game');
       renderGame(state);
+
+      // Alerta visual de carta no levantada
+      const pending = state.pendingMissedCapture;
+      if (pending) {
+        const isEligible = pending.eligiblePlayerId === ui.playerId;
+        $('#missed-title').textContent = isEligible ? 'SI!! Quedaron cartas en la mesa para ti!' : 'NO!! Dejaste cartas en la mesa!';
+        $('#missed-message').textContent = isEligible
+          ? `Puedes recoger ${pending.cardLabels.join(', ')} sin perder tu turno.`
+          : `${pending.eligiblePlayerName} puede recoger ${pending.cardLabels.join(', ')}.`;
+        $('#btn-claim-missed').style.display = isEligible ? '' : 'none';
+        $('#btn-close-missed').style.display = isEligible ? 'none' : '';
+        $('#modal-missed-capture').classList.remove('hidden');
+      } else {
+        $('#modal-missed-capture').classList.add('hidden');
+      }
 
       // Mostrar modales según estado
       if (state.status === 'HAND_FINISHED') {
