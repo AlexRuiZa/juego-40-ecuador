@@ -133,3 +133,16 @@ npm test
 ## QA actualizado
 
 `npm test` ejecuta ahora la batería ampliada de 166 pruebas.
+
+
+## v6 Production Hotfix
+
+Incluye reconexión mobile-friendly, conservación de asiento/equipo, inicio 2v2 robusto, sincronización de equipos desde servidor, limpieza segura de salas y mejora de contraste visual en pop-ups.
+
+Scripts QA:
+
+```bash
+npm test
+npm run test:regression
+npm run test:production
+```

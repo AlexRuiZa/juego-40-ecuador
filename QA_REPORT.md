@@ -1,53 +1,115 @@
-# QA Report — 40 Online Ecuador
+# QA Report — 40 Online Ecuador v6 Production Hotfix
 
-Versión: v5 production action points
 Fecha: 2026-05-05
+Versión: v6 production hotfix
 
-## Resultado ejecutivo
+## Cambios incluidos
 
-- `npm test`: 166 / 166 aprobados
-- `npm run test:regression`: 166 / 166 aprobados
-- `npm start`: OK
-- `/health`: OK
+1. **Reconexión mobile-friendly**
+   - Una desconexión breve ya no finaliza la partida.
+   - El asiento/equipo queda reservado.
+   - El jugador puede reconectar con el mismo nombre y código de sala.
+   - Se evita la suplantación si el jugador original sigue conectado.
 
-## Cambios cubiertos
+2. **Salas activas no se eliminan mientras hay jugadores conectados**
+   - La limpieza automática solo elimina salas vacías/offline.
+   - Una sala READY/WAITING con jugadores conectados ya no expira durante la coordinación.
 
-1. Captura por suma solo para A–7, con 2, 3, 4 o más cartas.
-2. Bloqueo de sumas con J, Q y K.
-3. Captura por escalera numérica, letras y combinada.
-4. Captura mixta: suma o igual + escalera continua posterior.
-5. Carta no levantada: ya no se entrega automáticamente al rival.
-6. Carta no levantada: se genera oportunidad pendiente para el rival/equipo contrario.
-7. El rival puede recoger cartas pendientes sin perder su turno normal.
-8. Mensajes visuales diferenciados:
-   - `NO!! Dejaste cartas en la mesa!`
-   - `SI!! Quedaron cartas en la mesa para ti!`
-9. Pop-up visual y cartas resaltadas para carta no levantada.
-10. Tema visual de mesa inspirado en la bandera de Ecuador.
-11. Limpieza periódica de salas inactivas/vacías.
-12. Validación de mazo de 40 cartas: A–7, J, Q, K, cuatro por valor.
+3. **Inicio 2v2 robusto**
+   - La partida 2v2 inicia con `currentTurn` asignado a un jugador real.
+   - Todos los clientes reciben el mismo estado `IN_PROGRESS`.
+   - Los equipos se sincronizan desde el servidor.
 
-## Cobertura de pruebas
+4. **Consistencia de equipos**
+   - El servidor es la única fuente de verdad.
+   - Todos los clientes reciben el mismo `teamId`, `position` y `currentPlayerId`.
+   - La reconexión conserva equipo, posición y permisos de host.
 
-La batería de 166 tests cubre:
+5. **Pop-ups con mayor contraste**
+   - Ajuste visual para que los modales tengan fondo amarillo/blanco, borde rojo/azul y texto oscuro fuerte.
+   - Mejor legibilidad sobre el fondo tricolor del juego.
 
-- Mazo de 40 cartas.
-- 1v1 y 2v2.
-- Inicio solo por host.
-- Sumas válidas e inválidas.
-- Escaleras válidas e inválidas.
-- Capturas mixtas.
-- Capturas parciales y cartas no levantadas.
-- Reclamo de cartas no levantadas por rival.
-- Ronda en repartos iniciales y posteriores.
-- Caída, limpia y caída+limpia.
-- Cartón.
-- Regla de 38 puntos.
-- Fin de partida en 40.
-- Protección contra jugadas manipuladas.
-- Limpieza de salas antiguas.
-- Regresión general.
+## Baterías de prueba ejecutadas
 
-## Estado
+### Batería 1 — QA funcional completo
+Comando:
 
-Aprobado para subir a GitHub y Railway.
+```bash
+npm test
+```
+
+Resultado:
+
+```txt
+166/166 tests passed
+```
+
+### Batería 2 — Regresión completa
+Comando:
+
+```bash
+npm run test:regression
+```
+
+Resultado:
+
+```txt
+166/166 tests passed
+```
+
+### Batería 3 — Producción multijugador / reconexión
+Comando:
+
+```bash
+npm run test:production
+```
+
+Resultado:
+
+```txt
+10/10 tests passed
+```
+
+Cobertura adicional:
+
+- 2v2 inicia con jugador real en turno.
+- Los 4 jugadores ven equipos consistentes.
+- Todos reciben `currentPlayerId` visible.
+- Desconexión no finaliza partida.
+- Reconexión recupera mismo equipo y posición.
+- Reconexión del host conserva permisos.
+- Bloqueo de suplantación.
+- Salas con jugadores conectados no expiran.
+- Salas vacías sí se limpian.
+- Estado público muestra jugadores desconectados.
+
+## Validación de servidor
+
+Comando:
+
+```bash
+npm start
+```
+
+Healthcheck:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Resultado:
+
+```json
+{"status":"ok"}
+```
+
+## Estado final
+
+```txt
+QA funcional: OK
+QA regresión: OK
+QA producción: OK
+Servidor local: OK
+Healthcheck: OK
+Listo para GitHub + Railway
+```

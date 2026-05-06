@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "node src/server.js",
     "test": "node tests/qa-166.test.js",
-    "test:regression": "node tests/qa-regression.test.js"
+    "test:regression": "node tests/qa-regression.test.js",
+    "test:production": "node tests/qa-production-v6.test.js"
   },
   "engines": {
     "node": ">=18"

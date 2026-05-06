@@ -1,76 +1,76 @@
-# Actualización GitHub + Railway
+# GitHub + Railway Update Steps — v6 Production Hotfix
 
-## 1. Copiar archivos sobre la carpeta oficial conectada a GitHub
+## Objetivo
+Actualizar GitHub y Railway con la versión v6 para que el juego online no dependa de archivos locales.
 
-Copiar desde este paquete hacia tu carpeta oficial del repo:
+## Paso 1 — Copiar archivos sobre la carpeta oficial
 
-- `src/`
-- `public/`
-- `tests/`
-- `package.json`
-- `package-lock.json`
-- `README.md`
-- `QA_REPORT.md`
-- `GITHUB_RAILWAY_UPDATE_STEPS.md`
-
-No copiar ni borrar:
-
-- `.git`
-- `node_modules`
-
-## 2. Validar localmente
-
-```bash
-npm install
-npm test
-npm run test:regression
-npm start
-```
-
-Abrir:
+Descomprime este ZIP y copia estos elementos sobre tu carpeta oficial conectada a GitHub:
 
 ```txt
-http://localhost:3000/health
+src/
+public/
+tests/
+package.json
+package-lock.json
+README.md
+QA_REPORT.md
+GITHUB_RAILWAY_UPDATE_STEPS.md
 ```
 
-Debe responder:
+Cuando Windows pregunte si deseas reemplazar, selecciona **Sí**.
 
-```json
-{"status":"ok"}
-```
-
-## 3. GitHub Desktop
-
-1. Abrir GitHub Desktop.
-2. Verificar cambios.
-3. Summary:
+No copies:
 
 ```txt
-v5 production fixes - 166 tests approved
+.git
+node_modules
 ```
 
-4. Click `Commit to main`.
-5. Click `Push origin`.
+## Paso 2 — Verificar cambios en GitHub Desktop
 
-## 4. Railway
+Abre GitHub Desktop. Deben aparecer archivos modificados.
 
-Railway debería redeployar automáticamente.
+Commit message sugerido:
 
-Validar:
+```txt
+v6 production hotfix - reconnection and 2v2 sync
+```
 
-- Deployment del último commit: `SUCCESS`.
-- URL pública abre correctamente.
-- `/health` responde OK.
+Haz:
 
-## 5. QA producción
+```txt
+Commit to main
+Push origin
+```
+
+## Paso 3 — Verificar GitHub web
+
+En GitHub, confirma que el último commit sea:
+
+```txt
+v6 production hotfix - reconnection and 2v2 sync
+```
+
+## Paso 4 — Railway
+
+Railway debe redeployar automáticamente al detectar el push.
+
+Verifica:
+
+```txt
+Deployments → Success → Active
+```
+
+## Paso 5 — Prueba en producción
 
 Probar:
 
-- 1v1.
-- 2v2.
-- suma A–7 con varias cartas.
-- bloqueo de suma con J/Q/K.
-- escalera numérica/letras/combinada.
-- captura mixta.
-- carta no levantada + botón `Recoger cartas`.
-- fin en 40.
+```txt
+1v1 sigue funcionando
+2v2 inicia correctamente
+los 4 jugadores ven los mismos equipos
+si un jugador minimiza/cambia de app, puede reconectar
+la sala no expira mientras hay jugadores conectados
+pop-ups visibles y legibles
+```

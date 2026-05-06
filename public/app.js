@@ -50,6 +50,32 @@
     setTimeout(() => toast.classList.add('hidden'), ms);
   };
 
+  const saveSession = () => {
+    if (ui.roomCode && ui.myName) {
+      localStorage.setItem('cuarentaSession', JSON.stringify({ roomCode: ui.roomCode, myName: ui.myName }));
+    }
+  };
+
+  const restoreSession = () => {
+    try { return JSON.parse(localStorage.getItem('cuarentaSession') || 'null'); }
+    catch { return null; }
+  };
+
+  socket.on('connect', () => {
+    const saved = restoreSession();
+    if (saved?.roomCode && saved?.myName && !ui.playerId) {
+      socket.emit('reconnectRoom', { roomCode: saved.roomCode, name: saved.myName }, (res) => {
+        if (res?.ok) {
+          ui.playerId = res.playerId;
+          ui.roomCode = res.roomCode;
+          ui.myName = saved.myName;
+          $('#waiting-room-code').textContent = res.roomCode;
+          showVisualAlert('Reconectado', 'Recuperaste tu asiento y tu equipo.', 'success');
+        }
+      });
+    }
+  });
+
   // ============================
   // Lobby
   // ============================
@@ -61,6 +87,7 @@
       ui.playerId = res.playerId;
       ui.roomCode = res.roomCode;
       ui.myName = name;
+      saveSession();
       $('#waiting-room-code').textContent = res.roomCode;
       showScreen('#screen-waiting');
     });
@@ -76,6 +103,7 @@
       ui.playerId = res.playerId;
       ui.roomCode = res.roomCode;
       ui.myName = name;
+      saveSession();
       $('#waiting-room-code').textContent = res.roomCode;
       showScreen('#screen-waiting');
     });
@@ -96,7 +124,7 @@
     state.players.forEach(p => {
       const li = document.createElement('li');
       li.innerHTML = `
-        <span>${p.name}${p.id === ui.playerId ? ' (tú)' : ''}${p.isHost ? ' 👑' : ''}</span>
+        <span>${p.name}${p.id === ui.playerId ? ' (tú)' : ''}${p.isHost ? ' 👑' : ''}${p.connected === false ? ' ⚠️ reconectando' : ''}</span>
         <span class="badge team-${p.teamId.toLowerCase()}-badge">Equipo ${p.teamId}</span>
       `;
       list.appendChild(li);
@@ -132,7 +160,7 @@
     if (modeEl) modeEl.textContent = state.gameMode || '-';
 
     const currentPlayer = state.players.find(p => p.id === state.currentPlayerId);
-    $('#current-player-name').textContent = currentPlayer ? currentPlayer.name : '-';
+    $('#current-player-name').textContent = currentPlayer ? `${currentPlayer.name}${currentPlayer.connected === false ? ' (reconectando)' : ''}` : '-';
 
     // Mi info
     const me = state.players.find(p => p.id === ui.playerId);
@@ -167,10 +195,11 @@
       const div = document.createElement('div');
       div.className = 'opponent';
       if (p.id === state.currentPlayerId) div.classList.add('active-turn');
+      if (p.connected === false) div.classList.add('disconnected');
       div.innerHTML = `
         <div class="name">${p.name}</div>
         <div class="team-tag">Equipo ${p.teamId}</div>
-        <div class="hand-count">🃏 ${p.handCount} cartas</div>
+        <div class="hand-count">${p.connected === false ? '⚠️ reconectando' : `🃏 ${p.handCount} cartas`}</div>
       `;
       container.appendChild(div);
     });
@@ -393,10 +422,10 @@
   });
 
   socket.on('disconnectPlayer', ({ playerId }) => {
-    showToast('Un jugador se desconectó');
+    showToast('Un jugador perdió conexión temporalmente');
   });
 
   socket.on('disconnect', () => {
-    showToast('Conexión perdida con el servidor');
+    showToast('Conexión perdida. Intentando reconectar...');
   });
 })();

@@ -95,22 +95,40 @@ function removePlayer(state, playerId) {
   const player = state.players.find(p => p.id === playerId);
   if (!player) return;
 
-  if (state.status === STATES.IN_PROGRESS || state.status === STATES.HAND_FINISHED) {
-    player.connected = false;
-    state.status = STATES.GAME_FINISHED;
-    state.winner = null;
-    state.winnerMessage = 'Partida finalizada por desconexión.';
-    state.log.push('Un jugador se desconectó. Partida finalizada.');
-    return;
+  // En producción móvil NO finalizamos la partida por una desconexión breve.
+  // Conservamos el asiento/equipo del jugador y permitimos reconexión por nombre + sala.
+  player.connected = false;
+  player.disconnectedAt = Date.now();
+  state.lastActivityAt = Date.now();
+  state.log.push(`${player.name} perdió conexión temporalmente. Su asiento queda reservado.`);
+}
+
+function reconnectPlayer(state, playerId, name) {
+  const cleanName = normalizeName(name);
+  if (!cleanName) throw new Error('Nombre inválido');
+  const player = state.players.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
+  if (!player) throw new Error('No existe un jugador con ese nombre en esta sala');
+
+  // Evita suplantación: si el jugador original sigue conectado en otro socket, no aceptamos duplicado.
+  if (player.connected && player.id !== playerId) {
+    throw new Error('Ese jugador ya está conectado en esta sala');
   }
 
-  state.players = state.players.filter(p => p.id !== playerId);
-  if (state.hostId === playerId) state.hostId = state.players[0]?.id || null;
-  state.players.forEach((p, i) => {
-    p.position = i;
-    p.teamId = i % 2 === 0 ? 'A' : 'B';
-  });
-  updateReadyStatus(state);
+  const oldId = player.id;
+  player.id = playerId;
+  player.connected = true;
+  player.disconnectedAt = null;
+
+  if (state.hostId === oldId) state.hostId = playerId;
+  if (state.lastPlayerToPlay === oldId) state.lastPlayerToPlay = playerId;
+  if (state.pendingMissedCapture) {
+    if (state.pendingMissedCapture.fromPlayerId === oldId) state.pendingMissedCapture.fromPlayerId = playerId;
+    if (state.pendingMissedCapture.eligiblePlayerId === oldId) state.pendingMissedCapture.eligiblePlayerId = playerId;
+  }
+
+  state.lastActivityAt = Date.now();
+  state.log.push(`${player.name} se reconectó y recuperó su asiento en Equipo ${player.teamId}.`);
+  return player;
 }
 
 function startGame(state, requesterId) {
@@ -154,7 +172,7 @@ function startNewHand(state, chooseRandomTurn = false) {
   state.teams.B.capturedCards = [];
 
   dealNextBatch(state);
-  if (chooseRandomTurn) state.currentTurn = Math.floor(Math.random() * state.players.length);
+  if (chooseRandomTurn) state.currentTurn = 0;
   state.status = STATES.IN_PROGRESS;
 }
 
@@ -455,6 +473,7 @@ function playCard(state, playerId, handIndex, tableIndices = []) {
   if (state.status !== STATES.IN_PROGRESS) throw new Error('La partida no está en curso');
   const player = state.players[state.currentTurn];
   if (!player || player.id !== playerId) throw new Error('No es tu turno');
+  if (player.connected === false) throw new Error('Tu conexión está pausada. Reconéctate para continuar.');
   if (!Number.isInteger(handIndex) || handIndex < 0 || handIndex >= player.hand.length) throw new Error('Carta inválida');
   if (!Array.isArray(tableIndices)) throw new Error('Selección de mesa inválida');
 
@@ -647,6 +666,7 @@ module.exports = {
   createInitialState,
   addPlayer,
   removePlayer,
+  reconnectPlayer,
   startGame,
   playCard,
   claimMissedCapture,

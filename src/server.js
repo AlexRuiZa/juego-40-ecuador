@@ -52,6 +52,8 @@ io.on('connection', (socket) => {
       const state = roomManager.createRoom();
       gameEngine.addPlayer(state, socket.id, name);
       socket.join(state.roomCode);
+      socket.data.roomCode = state.roomCode;
+      socket.data.playerName = name;
       if (typeof ack === 'function') {
         ack({ ok: true, roomCode: state.roomCode, playerId: socket.id });
       }
@@ -63,26 +65,59 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Unirse a sala existente
+  // Unirse a sala existente o reconectar a un asiento reservado
   socket.on('joinRoom', ({ roomCode, name }, ack) => {
     try {
       const code = (roomCode || '').toUpperCase().trim();
       const state = roomManager.getRoom(code);
       if (!state) throw new Error('Sala no encontrada');
+      const cleanName = String(name || '').trim();
+
+      const existingByName = state.players.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
+      if (existingByName && existingByName.connected === false) {
+        gameEngine.reconnectPlayer(state, socket.id, cleanName);
+        socket.join(code);
+        socket.data.roomCode = code;
+        socket.data.playerName = cleanName;
+        if (typeof ack === 'function') ack({ ok: true, roomCode: code, playerId: socket.id, reconnected: true });
+        broadcastState(code);
+        console.log(`[~] ${cleanName} se reconectó a ${code}`);
+        return;
+      }
+
       if (state.status !== gameEngine.STATES.WAITING_PLAYERS &&
           state.status !== gameEngine.STATES.READY) {
         throw new Error('La partida ya está en curso');
       }
-      gameEngine.addPlayer(state, socket.id, name);
+      gameEngine.addPlayer(state, socket.id, cleanName);
       socket.join(code);
+      socket.data.roomCode = code;
+      socket.data.playerName = cleanName;
       if (typeof ack === 'function') {
         ack({ ok: true, roomCode: code, playerId: socket.id });
       }
       broadcastState(code);
-      console.log(`[+] ${name} se unió a ${code}`);
+      console.log(`[+] ${cleanName} se unió a ${code}`);
     } catch (err) {
       if (typeof ack === 'function') ack({ ok: false, error: err.message });
       sendError(socket, err.message);
+    }
+  });
+
+  // Reconexión automática desde el mismo navegador/sesión
+  socket.on('reconnectRoom', ({ roomCode, name }, ack) => {
+    try {
+      const code = (roomCode || '').toUpperCase().trim();
+      const state = roomManager.getRoom(code);
+      if (!state) throw new Error('Sala no encontrada');
+      const player = gameEngine.reconnectPlayer(state, socket.id, name);
+      socket.join(code);
+      socket.data.roomCode = code;
+      socket.data.playerName = player.name;
+      if (typeof ack === 'function') ack({ ok: true, roomCode: code, playerId: socket.id, reconnected: true });
+      broadcastState(code);
+    } catch (err) {
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
     }
   });
 

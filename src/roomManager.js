@@ -39,7 +39,9 @@ function cleanupInactiveRooms({ emptyTtlMs = 10 * 60 * 1000, waitingTtlMs = 2 * 
     const activePlayers = state.players.filter(p => p.connected !== false).length;
     const idleMs = now - (state.lastActivityAt || state.createdAt || now);
     const isWaiting = state.status === 'WAITING_PLAYERS' || state.status === 'READY';
-    if ((activePlayers === 0 && idleMs > emptyTtlMs) || (isWaiting && idleMs > waitingTtlMs)) {
+    // No eliminamos salas de espera con jugadores conectados: pueden estar coordinando el inicio.
+    // Solo limpiamos salas realmente vacías o salas de espera donde todos quedaron offline.
+    if ((activePlayers === 0 && idleMs > emptyTtlMs) || (isWaiting && activePlayers === 0 && idleMs > waitingTtlMs)) {
       rooms.delete(code);
       removed += 1;
     }

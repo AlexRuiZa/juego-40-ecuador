@@ -145,7 +145,7 @@ for (const [name, fn] of aggressive) test(name, fn);
 // room manager cleanup
 for (let i=0;i<10;i++) test(`room code generado ${i}`, ()=>{ const r=roomManager.createRoom(); assert.equal(r.roomCode.length,4); });
 test('cleanup elimina sala vacía antigua', ()=>{ const r=roomManager.createRoom(); r.lastActivityAt=Date.now()-999999999; r.players=[]; const removed=roomManager.cleanupInactiveRooms({emptyTtlMs:1,waitingTtlMs:999999999}); assert.ok(removed>=1); });
-test('cleanup elimina waiting antigua', ()=>{ const r=roomManager.createRoom(); r.lastActivityAt=Date.now()-999999999; const removed=roomManager.cleanupInactiveRooms({emptyTtlMs:999999999,waitingTtlMs:1}); assert.ok(removed>=1); });
+test('cleanup conserva waiting antigua con jugador conectado', ()=>{ const r=roomManager.createRoom(); engine.addPlayer(r,'live-cleanup','Live'); r.lastActivityAt=Date.now()-999999999; const removed=roomManager.cleanupInactiveRooms({emptyTtlMs:999999999,waitingTtlMs:1}); assert.equal(roomManager.getRoom(r.roomCode) !== null, true); });
 
 // más regresión hasta 166
 const moreValid = [
