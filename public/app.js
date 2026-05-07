@@ -15,6 +15,12 @@
     selectedTableIndices: new Set(),
     seenLog: new Set(),
     audioEnabled: true,
+    visualQueue: [],
+    visualBusy: false,
+    pendingEndHandState: null,
+    pendingEndGameState: null,
+    endHandShownFor: null,
+    endGameShown: false,
   };
 
   const SUIT_SYMBOLS = {
@@ -66,6 +72,12 @@
     ui.lastState = null;
     ui.selectedHandIndex = null;
     ui.selectedTableIndices.clear();
+    ui.visualQueue = [];
+    ui.visualBusy = false;
+    ui.pendingEndHandState = null;
+    ui.pendingEndGameState = null;
+    ui.endHandShownFor = null;
+    ui.endGameShown = false;
   };
 
   const restoreSession = () => {
@@ -88,14 +100,42 @@
     } catch {}
   };
 
-  const showJudge = (title, message, { audio = null, ms = 3300 } = {}) => {
+  function processVisualQueue() {
+    if (ui.visualBusy) return;
+    const next = ui.visualQueue.shift();
+    if (!next) {
+      if (ui.pendingEndGameState && !ui.endGameShown) return showEndGameNow(ui.pendingEndGameState);
+      if (ui.pendingEndHandState) return showEndHandNow(ui.pendingEndHandState);
+      return;
+    }
+
+    ui.visualBusy = true;
     const overlay = $('#judge-overlay');
-    if (!overlay) return showVisualAlert(title, message, 'success', ms);
-    $('#judge-title').textContent = title;
-    $('#judge-message').textContent = message;
+    if (!overlay) {
+      showVisualAlert(next.title, next.message, 'success', next.ms || 2800);
+      setTimeout(() => {
+        ui.visualBusy = false;
+        processVisualQueue();
+      }, next.ms || 2800);
+      return;
+    }
+
+    $('#judge-title').textContent = next.title;
+    $('#judge-message').textContent = next.message;
     overlay.classList.remove('hidden');
-    if (audio) speak(audio);
-    setTimeout(() => overlay.classList.add('hidden'), ms);
+    if (next.audio) speak(next.audio);
+    setTimeout(() => {
+      overlay.classList.add('hidden');
+      ui.visualBusy = false;
+      processVisualQueue();
+    }, next.ms || 2800);
+  }
+
+  const showJudge = (title, message, { audio = null, ms = 3300, priority = false } = {}) => {
+    const item = { title, message, audio, ms };
+    if (priority) ui.visualQueue.unshift(item);
+    else ui.visualQueue.push(item);
+    processVisualQueue();
   };
 
   const goToLobby = () => {
@@ -440,6 +480,46 @@
     }
   }
 
+
+  function showEndHandNow(state) {
+    if (!state || state.status !== 'HAND_FINISHED') return;
+    const key = `${state.roomCode}-${state.handNumber}`;
+    if (ui.endHandShownFor === key) return;
+    ui.endHandShownFor = key;
+    ui.pendingEndHandState = null;
+
+    const hs = state.handSummary;
+    const summary = hs
+      ? `Cartón Equipo A: ${hs.cards.A} cartas (+${hs.carton.A}) | Equipo B: ${hs.cards.B} cartas (+${hs.carton.B}).\nMarcador actual: Equipo A ${hs.scores.A} | Equipo B ${hs.scores.B}${(hs.blockedBy38.A || hs.blockedBy38.B) ? '\nRegla 38 aplicada: el cartón no cierra partida.' : ''}`
+      : `Marcador: Equipo A: ${state.teams.A.score} | Equipo B: ${state.teams.B.score}`;
+    $('#end-hand-summary').textContent = summary;
+    const nextBtn = $('#btn-next-hand');
+    nextBtn.style.display = '';
+    nextBtn.disabled = false;
+    nextBtn.textContent = 'Continuar';
+    $('#modal-end-game').classList.add('hidden');
+    $('#modal-end-hand').classList.remove('hidden');
+  }
+
+  function showEndGameNow(state) {
+    if (!state || state.status !== 'GAME_FINISHED') return;
+    ui.endGameShown = true;
+    ui.pendingEndGameState = null;
+    ui.pendingEndHandState = null;
+    $('#judge-overlay')?.classList.add('hidden');
+    $('#modal-end-hand').classList.add('hidden');
+    $('#modal-missed-capture').classList.add('hidden');
+    localStorage.removeItem('cuarentaSession');
+    const winner = state.winner;
+    const summary = state.winnerMessage || (winner === 'EMPATE'
+      ? `Empate. A: ${state.teams.A.score} | B: ${state.teams.B.score}`
+      : `Ganador: Equipo ${winner}
+A: ${state.teams.A.score} | B: ${state.teams.B.score}`);
+    $('#end-game-summary').textContent = summary;
+    speak('Partida finalizada. Felicitaciones al ganador.');
+    $('#modal-end-game').classList.remove('hidden');
+  }
+
   // ============================
   // Eventos del servidor
   // ============================
@@ -451,6 +531,9 @@
     if (state.status === 'IN_PROGRESS') {
       $('#modal-end-hand').classList.add('hidden');
       $('#modal-end-game').classList.add('hidden');
+      ui.pendingEndHandState = null;
+      ui.pendingEndGameState = null;
+      ui.endGameShown = false;
     }
 
     if (state.status === 'WAITING_PLAYERS' || state.status === 'READY') {
@@ -475,27 +558,14 @@
         $('#modal-missed-capture').classList.add('hidden');
       }
 
-      // Mostrar modales según estado
+      // Mostrar modales según estado usando cola visual para evitar superposiciones.
       if (state.status === 'HAND_FINISHED') {
-        const hs = state.handSummary;
-        const summary = hs
-          ? `Cartón Equipo A: ${hs.cards.A} cartas (+${hs.carton.A}) | Equipo B: ${hs.cards.B} cartas (+${hs.carton.B}).\nMarcador actual: Equipo A ${hs.scores.A} | Equipo B ${hs.scores.B}${(hs.blockedBy38.A || hs.blockedBy38.B) ? '\nRegla 38 aplicada: el cartón no cierra partida.' : ''}`
-          : `Marcador: Equipo A: ${state.teams.A.score} | Equipo B: ${state.teams.B.score}`;
-        $('#end-hand-summary').textContent = summary;
-        const nextBtn = $('#btn-next-hand');
-        nextBtn.style.display = '';
-        nextBtn.disabled = false;
-        nextBtn.textContent = 'Continuar';
-        $('#modal-end-hand').classList.remove('hidden');
+        ui.pendingEndHandState = state;
+        if (!ui.visualBusy && ui.visualQueue.length === 0) showEndHandNow(state);
       }
       if (state.status === 'GAME_FINISHED') {
-        localStorage.removeItem('cuarentaSession');
-        const winner = state.winner;
-        const summary = state.winnerMessage || (winner === 'EMPATE'
-          ? `Empate. A: ${state.teams.A.score} | B: ${state.teams.B.score}`
-          : `Ganador: Equipo ${winner}\nA: ${state.teams.A.score} | B: ${state.teams.B.score}`);
-        $('#end-game-summary').textContent = summary;
-        $('#modal-end-game').classList.remove('hidden');
+        ui.pendingEndGameState = state;
+        if (!ui.visualBusy && ui.visualQueue.length === 0) showEndGameNow(state);
       }
     }
   });

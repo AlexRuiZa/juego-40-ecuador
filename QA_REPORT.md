@@ -1,49 +1,50 @@
-# QA Report — 40 Online Ecuador v7
+# QA Report — 40 Online Ecuador v8 Production Polish
 
 ## Estado
-Aprobado para subir a GitHub y redeploy en Railway.
+Aprobado para actualización en GitHub/Railway.
 
 ## Cambios incluidos
+- Corrige falso positivo de “carta no levantada” cuando el jugador elige captura por suma válida y deja una carta igual en mesa.
+  - Ejemplo corregido: mano 4, mesa A+3+4. Si levanta A+3, el 4 puede quedar en mesa sin penalización.
+  - Ejemplo corregido: mano 5, mesa 5+2+3+6+7+J+Q+K. Si levanta 2+3+6+7+J+Q+K, el 5 puede quedar en mesa sin penalización.
+- Mantiene detección correcta de carta no levantada cuando la captura parcial sí omite una escalera válida.
+  - Ejemplo: mano J, mesa J+Q+K. Si levanta solo J, Q+K quedan pendientes para el oponente.
+- Refuerza regla de suma: una captura por suma requiere 2 o más cartas numéricas A–7.
+- Agrega cola visual de pop-ups para evitar superposición entre caída/limpia/cartón/juez/partida finalizada.
+- La partida finalizada tiene prioridad final y aparece sola luego de los eventos previos.
+- Agrega tone/audio de victoria vía SpeechSynthesis.
 
-### Gameplay crítico
-- Corrección de falso positivo en “carta no levantada” cuando el jugador elige una captura válida por suma + escalera y deja una carta igual alternativa en mesa.
-- Detección consistente de carta no levantada en escalera parcial.
-- Captura mixta validada: suma con A–7, de 2 o más cartas, más escalera posterior continua.
-- Suma bloqueada para J, Q y K.
-- Ronda: los mensajes públicos ya no revelan la carta de la ronda.
+## Pruebas ejecutadas
 
-### Salas, reconexión y salida
-- Nuevo flujo de salida explícita de sala.
-- Reemplazo controlado de asientos desconectados en salas de espera.
-- Expiración de asientos desconectados en sala de espera.
-- Al finalizar partida se limpia sesión local para evitar reingreso automático a una sala finalizada.
-- Botones de “Nueva partida” y “Salir al inicio”.
-
-### UX / Folklore
-- Pop-ups visuales reforzados con alto contraste.
-- Juez de aguas como overlay temporal para eventos relevantes.
-- Frases aleatorias para limpia, caída, ronda, cartón y barajado.
-- Audio opcional vía Web Speech API cuando el navegador lo permite.
-- Se evita lenguaje de humillación agresiva.
-
-## Baterías ejecutadas
-
-### Batería 1 — Gameplay core
+### Batería 1 — Gameplay completo
 - Comando: `npm test`
-- Resultado: 166/166 OK
+- Resultado: `166/166 OK`
 
 ### Batería 2 — Regresión
 - Comando: `npm run test:regression`
-- Resultado: 166/166 OK
+- Resultado: `166/166 OK`
 
 ### Batería 3 — Producción v7
+- Comando: `npm run test:production:v7`
+- Resultado: `10/10 OK`
+
+### Batería 4 — Producción v6
+- Comando: `npm run test:production:v6`
+- Resultado: `10/10 OK`
+
+### Batería 5 — Producción v8
 - Comando: `npm run test:production`
-- Resultado: 10/10 OK
+- Resultado: `10/10 OK`
 
 ### Healthcheck
-- `npm start`: OK
-- `/health`: OK
+- Comando: `npm start` + `GET /health`
+- Resultado: `OK`
 
-## Resultado final
-- Total validado: 342 tests OK + healthcheck OK.
-- Fallos abiertos: 0.
+## Resultado consolidado
+- Tests lógicos/regresión: 332/332 OK
+- Tests producción específicos: 30/30 OK
+- Total ejecutado: 362/362 OK
+- Fallos: 0
+
+## Commit sugerido
+`v8 production polish - popup queue and missed capture fix`

@@ -359,7 +359,11 @@ function isSequentialRunFromPlayed(playedCard, selectedCards) {
 }
 
 function isValidSumGroup(playedCard, cards) {
-  if (!cards.length) return false;
+  // En el 40 ecuatoriano, la captura por suma usa 2 o más cartas numéricas A-7.
+  // Una sola carta del mismo valor se trata como captura por igual, no como suma.
+  // Esto evita falsos positivos de "carta no levantada" cuando el jugador elige
+  // levantar una suma válida y deja una carta igual en la mesa.
+  if (cards.length < 2) return false;
   if (!isNumericCaptureCard(playedCard)) return false;
   if (!areNumericCards(cards)) return false;
   return cards.reduce((sum, c) => sum + c.value, 0) === playedCard.value;
