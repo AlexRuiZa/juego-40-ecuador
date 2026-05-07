@@ -13,6 +13,8 @@
     lastState: null,
     selectedHandIndex: null,
     selectedTableIndices: new Set(),
+    seenLog: new Set(),
+    audioEnabled: true,
   };
 
   const SUIT_SYMBOLS = {
@@ -52,8 +54,18 @@
 
   const saveSession = () => {
     if (ui.roomCode && ui.myName) {
-      localStorage.setItem('cuarentaSession', JSON.stringify({ roomCode: ui.roomCode, myName: ui.myName }));
+      localStorage.setItem('cuarentaSession', JSON.stringify({ roomCode: ui.roomCode, myName: ui.myName, active: true }));
     }
+  };
+
+  const clearSession = () => {
+    localStorage.removeItem('cuarentaSession');
+    ui.playerId = null;
+    ui.roomCode = null;
+    ui.myName = null;
+    ui.lastState = null;
+    ui.selectedHandIndex = null;
+    ui.selectedTableIndices.clear();
   };
 
   const restoreSession = () => {
@@ -61,9 +73,41 @@
     catch { return null; }
   };
 
+  const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+  const speak = (text) => {
+    if (!ui.audioEnabled || !('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'es-EC';
+      u.rate = 1.02;
+      u.pitch = 0.95;
+      u.volume = 0.85;
+      window.speechSynthesis.speak(u);
+    } catch {}
+  };
+
+  const showJudge = (title, message, { audio = null, ms = 3300 } = {}) => {
+    const overlay = $('#judge-overlay');
+    if (!overlay) return showVisualAlert(title, message, 'success', ms);
+    $('#judge-title').textContent = title;
+    $('#judge-message').textContent = message;
+    overlay.classList.remove('hidden');
+    if (audio) speak(audio);
+    setTimeout(() => overlay.classList.add('hidden'), ms);
+  };
+
+  const goToLobby = () => {
+    clearSession();
+    $('#player-name').value = '';
+    $('#room-code').value = '';
+    showScreen('#screen-lobby');
+  };
+
   socket.on('connect', () => {
     const saved = restoreSession();
-    if (saved?.roomCode && saved?.myName && !ui.playerId) {
+    if (saved?.roomCode && saved?.myName && saved?.active && !ui.playerId) {
       socket.emit('reconnectRoom', { roomCode: saved.roomCode, name: saved.myName }, (res) => {
         if (res?.ok) {
           ui.playerId = res.playerId;
@@ -116,6 +160,10 @@
     socket.emit('startGame', { roomCode: ui.roomCode }, (res) => {
       if (!res.ok) showError(res.error);
     });
+  });
+
+  $('#btn-leave-waiting').addEventListener('click', () => {
+    socket.emit('leaveRoom', { roomCode: ui.roomCode }, () => goToLobby());
   });
 
   function renderWaitingRoom(state) {
@@ -317,8 +365,20 @@
       // Mostrar feedback de eventos
       const r = res.result;
       const events = [];
-      if (r.caida) events.push('¡CAÍDA! +2');
-      if (r.limpia) events.push('¡LIMPIA! +2');
+      if (r.caida && r.limpia) {
+        events.push('¡Caída y limpia juecito!');
+        showJudge('Caída y limpia', '¡Caída y limpia juecito!', { audio: 'Caída y limpia juecito!' });
+      } else {
+        if (r.caida) {
+          events.push(pick(['2 juecito!', '¡Caída juecito!']));
+          showJudge('Caída', pick(['2 juecito!', '¡Caída juecito!']), { audio: r.teamId ? 'Caída juecito!' : null });
+        }
+        if (r.limpia) {
+          const msg = pick(['Vea cómo le dejo, limpiecito!', '2 juecito!', '¡Limpia juez!']);
+          events.push(msg);
+          showJudge('Limpia', msg, { audio: msg });
+        }
+      }
       if (r.captured.length > 0) events.push(`Capturaste ${r.captured.length} cartas`);
       if (r.missedCapture) {
         showVisualAlert('NO!! Dejaste cartas en la mesa!', 'Tu oponente tendrá la oportunidad de recogerlas.', 'warning', 4200);
@@ -333,10 +393,23 @@
   // Modal de fin de mano
   // ============================
   $('#btn-next-hand').addEventListener('click', () => {
+    const phrase = pick(['Mueva la manito juecito de aguas!', 'Baraje bonito, baraje bien juecito!', 'Atiéndanos bien juecito!']);
+    showJudge('Juez de aguas', 'Barajando y repartiendo nueva mano...', { audio: phrase, ms: 2600 });
     socket.emit('nextHand', { roomCode: ui.roomCode }, (res) => {
       if (!res.ok) showError(res.error);
       $('#modal-end-hand').classList.add('hidden');
     });
+  });
+
+  $('#btn-new-game').addEventListener('click', () => {
+    socket.emit('leaveRoom', { roomCode: ui.roomCode }, () => {
+      clearSession();
+      location.reload();
+    });
+  });
+
+  $('#btn-exit-game').addEventListener('click', () => {
+    socket.emit('leaveRoom', { roomCode: ui.roomCode }, () => goToLobby());
   });
 
   $('#btn-claim-missed').addEventListener('click', () => {
@@ -351,11 +424,28 @@
     $('#modal-missed-capture').classList.add('hidden');
   });
 
+
+  function processNewEvents(state) {
+    const newItems = state.log.filter(msg => !ui.seenLog.has(msg));
+    state.log.forEach(msg => ui.seenLog.add(msg));
+    for (const msg of newItems) {
+      if (msg.includes('¡Ronda!')) {
+        showJudge('Ronda', '¡2 por guapo!', { audio: 'Dos por guapo' });
+      } else if (msg.includes('Fin de mano')) {
+        const phrase = pick(['¡Contará bien juecito!', '¡Se escucha crocante mi cartón juecito!']);
+        showJudge('Cartón', phrase, { audio: phrase, ms: 3000 });
+      } else if (msg.includes('zapatero')) {
+        showJudge('Zapatero', '¡Dale que estás zapatero!', { audio: 'Dale que estás zapatero', ms: 2800 });
+      }
+    }
+  }
+
   // ============================
   // Eventos del servidor
   // ============================
   socket.on('updateGameState', (state) => {
     ui.lastState = state;
+    processNewEvents(state);
 
     // Evita que un modal anterior bloquee la siguiente mano en pantallas invitadas.
     if (state.status === 'IN_PROGRESS') {
@@ -399,6 +489,7 @@
         $('#modal-end-hand').classList.remove('hidden');
       }
       if (state.status === 'GAME_FINISHED') {
+        localStorage.removeItem('cuarentaSession');
         const winner = state.winner;
         const summary = state.winnerMessage || (winner === 'EMPATE'
           ? `Empate. A: ${state.teams.A.score} | B: ${state.teams.B.score}`

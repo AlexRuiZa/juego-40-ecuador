@@ -383,3 +383,59 @@ body {
 .toast-info { background: #111827; color: #ffffff; border: 3px solid #f2c230; }
 .opponent.disconnected { opacity: 0.72; border-color: #ffcc00; filter: grayscale(0.25); }
 .players-list li span:first-child { color: #fff; }
+
+/* v7 folkloric UX hotfix */
+.danger-soft {
+  margin-top: 10px;
+  background: rgba(255,255,255,.12) !important;
+  border: 1px solid rgba(255,210,80,.55) !important;
+  color: #fff2b0 !important;
+}
+.toast {
+  background: linear-gradient(135deg, #ffd34d, #fff1a6) !important;
+  border: 3px solid #d71920 !important;
+  color: #061b49 !important;
+  box-shadow: 0 16px 50px rgba(0,0,0,.45) !important;
+  font-weight: 800 !important;
+}
+.toast-warning { background: linear-gradient(135deg, #ffcd3c, #ffef9a) !important; }
+.toast-success { background: linear-gradient(135deg, #ffe26a, #ffffff) !important; }
+.modal-content {
+  background: linear-gradient(145deg, #fff0a8, #ffd04a) !important;
+  border: 4px solid #d71920 !important;
+  color: #061b49 !important;
+  box-shadow: 0 24px 80px rgba(0,0,0,.65) !important;
+}
+.modal-content h2 { color: #003f88 !important; }
+.modal-content p { color: #111 !important; font-weight: 700; white-space: pre-line; }
+.card-game.missed-available {
+  outline: 4px solid #ffd23f;
+  box-shadow: 0 0 22px rgba(255, 210, 63, .95);
+  transform: translateY(-4px);
+}
+.judge-overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  z-index: 1200;
+  pointer-events: none;
+  background: rgba(0, 0, 0, .18);
+}
+.judge-overlay.hidden { display: none; }
+.judge-card {
+  min-width: min(420px, 88vw);
+  padding: 22px 26px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, #ffd23f 0%, #fff4b8 48%, #d71920 130%);
+  border: 5px solid #004b93;
+  color: #041a4a;
+  text-align: center;
+  box-shadow: 0 28px 90px rgba(0,0,0,.65);
+  animation: judge-pop .28s ease-out;
+}
+.judge-avatar { font-size: 54px; line-height: 1; }
+.judge-table { font-size: 34px; margin: 8px 0; }
+.judge-title { font-size: 22px; font-weight: 900; color: #004b93; text-transform: uppercase; letter-spacing: .5px; }
+.judge-message { margin-top: 8px; font-size: 24px; font-weight: 900; color: #111; }
+@keyframes judge-pop { from { transform: scale(.86); opacity: 0; } to { transform: scale(1); opacity: 1; } }

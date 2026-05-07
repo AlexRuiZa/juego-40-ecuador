@@ -45,6 +45,7 @@
       <button id="btn-start" class="primary" disabled>
         Iniciar partida
       </button>
+      <button id="btn-leave-waiting" class="secondary danger-soft">Salir de sala</button>
     </div>
   </section>
 
@@ -104,7 +105,8 @@
       <div class="modal-content">
         <h2>🏆 Partida finalizada</h2>
         <p id="end-game-summary"></p>
-        <button onclick="location.reload()" class="primary">Nueva partida</button>
+        <button id="btn-new-game" class="primary">Nueva partida</button>
+        <button id="btn-exit-game" class="secondary danger-soft">Salir al inicio</button>
       </div>
     </div>
 
@@ -116,6 +118,15 @@
         <p id="missed-message"></p>
         <button id="btn-claim-missed" class="primary">Recoger cartas</button>
         <button id="btn-close-missed" class="secondary">Entendido</button>
+      </div>
+    </div>
+
+    <div id="judge-overlay" class="judge-overlay hidden">
+      <div class="judge-card">
+        <div class="judge-avatar">🧔🏽‍♂️</div>
+        <div class="judge-table">🃏 🥃</div>
+        <div id="judge-title" class="judge-title">Juez de aguas</div>
+        <div id="judge-message" class="judge-message"></div>
       </div>
     </div>
 

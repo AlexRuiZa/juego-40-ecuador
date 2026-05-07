@@ -71,6 +71,7 @@ io.on('connection', (socket) => {
       const code = (roomCode || '').toUpperCase().trim();
       const state = roomManager.getRoom(code);
       if (!state) throw new Error('Sala no encontrada');
+      gameEngine.expireDisconnectedPlayers(state);
       const cleanName = String(name || '').trim();
 
       const existingByName = state.players.find(p => p.name.toLowerCase() === cleanName.toLowerCase());
@@ -89,15 +90,16 @@ io.on('connection', (socket) => {
           state.status !== gameEngine.STATES.READY) {
         throw new Error('La partida ya está en curso');
       }
-      gameEngine.addPlayer(state, socket.id, cleanName);
+      const replaced = gameEngine.replaceDisconnectedPlayer(state, socket.id, cleanName);
+      if (!replaced) gameEngine.addPlayer(state, socket.id, cleanName);
       socket.join(code);
       socket.data.roomCode = code;
       socket.data.playerName = cleanName;
       if (typeof ack === 'function') {
-        ack({ ok: true, roomCode: code, playerId: socket.id });
+        ack({ ok: true, roomCode: code, playerId: socket.id, replaced: !!replaced });
       }
       broadcastState(code);
-      console.log(`[+] ${cleanName} se unió a ${code}`);
+      console.log(`[+] ${cleanName} se unió a ${code}${replaced ? ' reemplazando asiento desconectado' : ''}`);
     } catch (err) {
       if (typeof ack === 'function') ack({ ok: false, error: err.message });
       sendError(socket, err.message);
@@ -213,6 +215,31 @@ io.on('connection', (socket) => {
     }
   });
 
+
+  // Salir de sala de manera explícita: libera asiento y limpia sesión del cliente.
+  socket.on('leaveRoom', ({ roomCode }, ack) => {
+    try {
+      const code = (roomCode || socket.data.roomCode || '').toUpperCase().trim();
+      const state = roomManager.getRoom(code);
+      if (!state) {
+        if (typeof ack === 'function') ack({ ok: true });
+        return;
+      }
+      gameEngine.leavePlayer(state, socket.id);
+      socket.leave(code);
+      socket.data.roomCode = null;
+      socket.data.playerName = null;
+      if (state.players.length === 0 || state.status === gameEngine.STATES.GAME_FINISHED) {
+        if (state.players.length === 0) roomManager.deleteRoom(code);
+      }
+      if (typeof ack === 'function') ack({ ok: true });
+      broadcastState(code);
+    } catch (err) {
+      if (typeof ack === 'function') ack({ ok: false, error: err.message });
+      sendError(socket, err.message);
+    }
+  });
+
   // Manejo de desconexión
   socket.on('disconnect', () => {
     console.log(`[-] Desconexión: ${socket.id}`);
@@ -234,7 +261,10 @@ io.on('connection', (socket) => {
 });
 
 setInterval(() => {
+  let expired = 0;
+  for (const state of roomManager.getAllRooms()) expired += gameEngine.expireDisconnectedPlayers(state);
   const removed = roomManager.cleanupInactiveRooms();
+  if (expired > 0) console.log(`[cleanup] Asientos desconectados liberados: ${expired}`);
   if (removed > 0) console.log(`[cleanup] Salas inactivas eliminadas: ${removed}`);
 }, 5 * 60 * 1000).unref();
 

@@ -54,6 +54,10 @@ function deleteRoom(code) {
   rooms.delete(code);
 }
 
+function getAllRooms() {
+  return Array.from(rooms.values());
+}
+
 /**
  * Busca la sala donde participa un socketId. Útil para manejar desconexiones
  * sin tener que mantener un índice inverso adicional (las salas son pocas en MVP).
@@ -69,6 +73,7 @@ module.exports = {
   createRoom,
   getRoom,
   deleteRoom,
+  getAllRooms,
   findRoomByPlayerId,
   cleanupInactiveRooms,
 };

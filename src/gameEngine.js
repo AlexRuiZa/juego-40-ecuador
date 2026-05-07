@@ -48,6 +48,7 @@ function createInitialState(roomCode) {
     winnerMessage: null,
     handSummary: null,
     pendingMissedCapture: null,
+    zapateroAnnounced: false,
     createdAt: Date.now(),
     lastActivityAt: Date.now(),
   };
@@ -131,6 +132,70 @@ function reconnectPlayer(state, playerId, name) {
   return player;
 }
 
+
+function leavePlayer(state, playerId) {
+  const idx = state.players.findIndex(p => p.id === playerId);
+  if (idx === -1) return false;
+  const player = state.players[idx];
+  // En sala de espera, salir libera el asiento inmediatamente.
+  if (state.status === STATES.WAITING_PLAYERS || state.status === STATES.READY || state.status === STATES.GAME_FINISHED) {
+    state.players.splice(idx, 1);
+    // Recalcular posiciones/equipos manteniendo el orden visible.
+    state.players.forEach((p, i) => {
+      p.position = i;
+      p.teamId = i % 2 === 0 ? 'A' : 'B';
+    });
+    if (state.hostId === playerId) state.hostId = state.players[0]?.id || null;
+    updateReadyStatus(state);
+    state.lastActivityAt = Date.now();
+    state.log.push(`${player.name} salió de la sala.`);
+    return true;
+  }
+  // En partida en curso se marca como desconectado para permitir reconexión.
+  removePlayer(state, playerId);
+  return true;
+}
+
+function replaceDisconnectedPlayer(state, playerId, name) {
+  const cleanName = normalizeName(name);
+  if (!cleanName) throw new Error('Nombre inválido');
+  if (state.players.some(p => p.connected !== false && p.name.toLowerCase() === cleanName.toLowerCase())) {
+    throw new Error('Ya existe un jugador conectado con ese nombre');
+  }
+  const slot = state.players.find(p => p.connected === false);
+  if (!slot) return null;
+  const oldName = slot.name;
+  slot.id = playerId;
+  slot.name = cleanName;
+  slot.hand = [];
+  slot.connected = true;
+  slot.disconnectedAt = null;
+  if (!state.hostId) state.hostId = playerId;
+  state.lastActivityAt = Date.now();
+  state.log.push(`${cleanName} reemplazó el asiento libre de ${oldName} en Equipo ${slot.teamId}.`);
+  updateReadyStatus(state);
+  return slot;
+}
+
+function expireDisconnectedPlayers(state, ttlMs = 90 * 1000) {
+  const now = Date.now();
+  let removed = 0;
+  if (state.status === STATES.WAITING_PLAYERS || state.status === STATES.READY || state.status === STATES.GAME_FINISHED) {
+    state.players = state.players.filter(p => {
+      const keep = p.connected !== false || !p.disconnectedAt || (now - p.disconnectedAt) < ttlMs;
+      if (!keep) removed += 1;
+      return keep;
+    });
+    if (removed) {
+      state.players.forEach((p, i) => { p.position = i; p.teamId = i % 2 === 0 ? 'A' : 'B'; });
+      if (!state.players.some(p => p.id === state.hostId)) state.hostId = state.players[0]?.id || null;
+      updateReadyStatus(state);
+      state.lastActivityAt = now;
+    }
+  }
+  return removed;
+}
+
 function startGame(state, requesterId) {
   if (state.status !== STATES.READY) {
     throw new Error('La partida solo puede iniciar cuando la sala está lista');
@@ -156,6 +221,7 @@ function resetScores(state) {
   state.winner = null;
   state.winnerMessage = null;
   state.handSummary = null;
+  state.zapateroAnnounced = false;
   state.log = [];
 }
 
@@ -191,7 +257,7 @@ function detectRondas(state) {
     for (const [rank, count] of Object.entries(counts)) {
       if (count >= 3) {
         addScore(state, player.teamId, POINTS.RONDA, 'ronda');
-        state.log.push(`¡Ronda de ${rank}! +2 para ${teamLabel(state, player.teamId)} (${player.name})`);
+        state.log.push(`¡Ronda! +2 para ${teamLabel(state, player.teamId)} (${player.name})`);
       }
     }
   }
@@ -200,7 +266,19 @@ function detectRondas(state) {
 function addScore(state, teamId, points, source) {
   if (points <= 0) return 0;
   state.teams[teamId].score += points;
+  maybeAnnounceZapatero(state);
   return points;
+}
+
+
+function maybeAnnounceZapatero(state) {
+  if (state.zapateroAnnounced) return;
+  const a = state.teams.A.score;
+  const b = state.teams.B.score;
+  if ((a > 10 && b < 10) || (b > 10 && a < 10)) {
+    state.zapateroAnnounced = true;
+    state.log.push('¡Dale que estás zapatero!');
+  }
 }
 
 function ensureGameNotFinished(state) {
@@ -396,11 +474,78 @@ function findBestMissedCapture(playedCard, tableCards) {
   return best;
 }
 
+function getValueSequence(cards, startValue) {
+  const byValue = new Map();
+  for (const card of cards) {
+    if (!byValue.has(card.value)) byValue.set(card.value, card);
+  }
+  const seq = [];
+  let v = startValue;
+  while (byValue.has(v)) {
+    seq.push(byValue.get(v));
+    v += 1;
+  }
+  return seq;
+}
+
+function splitSelectedIntoBaseAndRun(playedCard, selectedTableCards) {
+  // Busca una interpretación de la jugada elegida: base (igual o suma) + escalera posterior.
+  // Esta función respeta la ruta escogida por el jugador para evitar falsos positivos.
+  const n = selectedTableCards.length;
+  if (!n) return null;
+  for (let mask = 1; mask < (1 << n); mask++) {
+    const base = [];
+    const run = [];
+    for (let i = 0; i < n; i++) (mask & (1 << i) ? base : run).push(selectedTableCards[i]);
+    if (!isValidBaseGroup(playedCard, base)) continue;
+    if (run.length && !isConsecutiveRunStartingAt(run, playedCard.value + 1)) continue;
+    return { base, run };
+  }
+  if (selectedTableCards.every(c => c.value === playedCard.value)) return { base: selectedTableCards, run: [] };
+  if (isValidSumGroup(playedCard, selectedTableCards)) return { base: selectedTableCards, run: [] };
+  if (isSequentialRunFromPlayed(playedCard, selectedTableCards)) {
+    const values = sortedValues(selectedTableCards);
+    const baseCard = selectedTableCards.find(c => c.value === playedCard.value);
+    const run = selectedTableCards.filter(c => c.id !== baseCard.id);
+    return { base: [baseCard], run };
+  }
+  return null;
+}
+
 function getOmittedCaptureCards(playedCard, originalTableCards, selectedTableCards) {
-  const best = findBestMissedCapture(playedCard, originalTableCards);
-  if (!best.length) return [];
   const selectedIds = new Set(selectedTableCards.map(c => c.id));
-  return best.filter(c => !selectedIds.has(c.id));
+  const notSelected = originalTableCards.filter(c => !selectedIds.has(c.id));
+
+  if (!selectedTableCards.length) {
+    const best = findBestMissedCapture(playedCard, originalTableCards);
+    return best;
+  }
+
+  if (!isValidCapture(playedCard, selectedTableCards)) return [];
+  const route = splitSelectedIntoBaseAndRun(playedCard, selectedTableCards);
+  if (!route) return [];
+
+  const selectedRunValues = route.run.map(c => c.value);
+  const nextStart = selectedRunValues.length
+    ? Math.max(...selectedRunValues) + 1
+    : playedCard.value + 1;
+
+  // Solo se consideran cartas no levantadas las que continúan la escalera de la ruta elegida.
+  // No se penaliza dejar una carta igual si el jugador escogió una base por suma válida.
+  const runExtension = getValueSequence(notSelected, nextStart);
+  if (runExtension.length) return runExtension;
+
+  // Si el jugador solo tomó una base por suma y dejó otra combinación numérica equivalente,
+  // esa oportunidad sí puede pasar al rival. No aplica cuando ya eligió y completó una escalera,
+  // ni para cartas iguales alternativas (evita el falso positivo del 5 igual dejado en mesa).
+  if (!route.run.length && isValidSumGroup(playedCard, route.base)) {
+    const candidates = findAllSubsets(notSelected)
+      .filter(subset => isValidSumGroup(playedCard, subset))
+      .sort(compareCaptureCandidates);
+    return candidates.pop() || [];
+  }
+
+  return [];
 }
 
 function getOpponentTeamId(player) {
@@ -589,6 +734,7 @@ function finishHand(state) {
   const cartonB = beforeB >= 38 ? 0 : calculateCarton(cardsB);
   state.teams.A.score += cartonA;
   state.teams.B.score += cartonB;
+  maybeAnnounceZapatero(state);
 
   const blockedA = beforeA >= 38 && calculateCarton(cardsA) > 0;
   const blockedB = beforeB >= 38 && calculateCarton(cardsB) > 0;
@@ -666,6 +812,9 @@ module.exports = {
   createInitialState,
   addPlayer,
   removePlayer,
+  leavePlayer,
+  replaceDisconnectedPlayer,
+  expireDisconnectedPlayers,
   reconnectPlayer,
   startGame,
   playCard,
