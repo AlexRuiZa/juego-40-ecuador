@@ -1,21 +1,62 @@
-# GitHub + Railway update steps — v8
+# Actualización GitHub + Railway — v10
 
-1. Descomprime el ZIP v8.
-2. Abre tu carpeta oficial conectada a GitHub (`40-online-ecuador`), la que contiene `.git`.
-3. Copia desde la carpeta v8 hacia la carpeta oficial:
-   - `public/`
-   - `src/`
-   - `tests/`
-   - `package.json`
-   - `package-lock.json`
-   - `README.md`
-   - `QA_REPORT.md`
-   - `GITHUB_RAILWAY_UPDATE_STEPS.md`
-4. No copies `.git` ni `node_modules`.
-5. Abre GitHub Desktop.
-6. Commit sugerido: `v8 production polish - popup queue and missed capture fix`.
-7. Click `Commit to main`.
-8. Click `Push origin`.
-9. Railway detectará el push y hará redeploy automático.
-10. Verifica que Railway muestre `Deployment successful` y `Active`.
-11. Prueba la URL pública.
+## 1. Copiar archivos
+Descomprime este ZIP y copia sobre la carpeta oficial conectada a GitHub:
+
+- public
+- src
+- tests
+- package.json
+- package-lock.json
+- README.md
+- QA_REPORT.md
+- GITHUB_RAILWAY_UPDATE_STEPS.md
+
+No copies:
+
+- .git
+- node_modules
+
+## 2. Verificar local
+En la carpeta oficial:
+
+```bash
+npm install
+npm test
+npm run test:regression
+npm run test:production:v10
+npm start
+```
+
+## 3. Commit en GitHub Desktop
+Summary sugerido:
+
+```txt
+v10 Don Evaristo visual and tones
+```
+
+Luego:
+
+```txt
+Commit to main
+Push origin
+```
+
+## 4. Railway
+Railway debe detectar el push y redeployar automáticamente.
+
+Verifica:
+
+```txt
+Deployments → Success / Active
+```
+
+## 5. Validación producción
+Probar:
+
+- 1v1
+- 2v2
+- Don Evaristo visible en pop-ups
+- tones activos/desactivables
+- fin de partida
+- nueva partida / salir al inicio

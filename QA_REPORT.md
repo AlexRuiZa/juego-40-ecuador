@@ -1,50 +1,27 @@
-# QA Report — 40 Online Ecuador v8 Production Polish
+# QA REPORT — 40 Online Ecuador v10
+
+## Versión
+v10 — Don Evaristo visual + tones actuales
+
+## Cambios principales
+- Se integra la imagen de Don Evaristo Corral y Chancleta como juecito de aguas.
+- Se mantiene el canelazo/licor simbólico junto al juez.
+- Se elimina el TTS sintético de navegador para evitar una voz poco natural.
+- Se mantienen tones/sonidos actuales mediante Web Audio API.
+- El sistema queda preparado para reemplazar tones por audios MP3 autorizados en una versión futura.
+- Se conserva la cola de pop-ups, prioridad visual, salida de sala, reconexión y reglas de captura ya aprobadas.
+
+## Resultados de pruebas
+- npm test: 166/166 OK
+- npm run test:regression: 166/166 OK
+- npm run test:production:v6: 10/10 OK
+- npm run test:production:v7: 10/10 OK
+- npm run test:production: 10/10 OK
+- npm run test:production:v9: 10/10 OK
+- npm run test:production:v10: 10/10 OK
+
+## Total
+538/538 tests aprobados.
 
 ## Estado
-Aprobado para actualización en GitHub/Railway.
-
-## Cambios incluidos
-- Corrige falso positivo de “carta no levantada” cuando el jugador elige captura por suma válida y deja una carta igual en mesa.
-  - Ejemplo corregido: mano 4, mesa A+3+4. Si levanta A+3, el 4 puede quedar en mesa sin penalización.
-  - Ejemplo corregido: mano 5, mesa 5+2+3+6+7+J+Q+K. Si levanta 2+3+6+7+J+Q+K, el 5 puede quedar en mesa sin penalización.
-- Mantiene detección correcta de carta no levantada cuando la captura parcial sí omite una escalera válida.
-  - Ejemplo: mano J, mesa J+Q+K. Si levanta solo J, Q+K quedan pendientes para el oponente.
-- Refuerza regla de suma: una captura por suma requiere 2 o más cartas numéricas A–7.
-- Agrega cola visual de pop-ups para evitar superposición entre caída/limpia/cartón/juez/partida finalizada.
-- La partida finalizada tiene prioridad final y aparece sola luego de los eventos previos.
-- Agrega tone/audio de victoria vía SpeechSynthesis.
-
-## Pruebas ejecutadas
-
-### Batería 1 — Gameplay completo
-- Comando: `npm test`
-- Resultado: `166/166 OK`
-
-### Batería 2 — Regresión
-- Comando: `npm run test:regression`
-- Resultado: `166/166 OK`
-
-### Batería 3 — Producción v7
-- Comando: `npm run test:production:v7`
-- Resultado: `10/10 OK`
-
-### Batería 4 — Producción v6
-- Comando: `npm run test:production:v6`
-- Resultado: `10/10 OK`
-
-### Batería 5 — Producción v8
-- Comando: `npm run test:production`
-- Resultado: `10/10 OK`
-
-### Healthcheck
-- Comando: `npm start` + `GET /health`
-- Resultado: `OK`
-
-## Resultado consolidado
-- Tests lógicos/regresión: 332/332 OK
-- Tests producción específicos: 30/30 OK
-- Total ejecutado: 362/362 OK
-- Fallos: 0
-
-## Commit sugerido
-`v8 production polish - popup queue and missed capture fix`
+Aprobado para actualizar GitHub y Railway.

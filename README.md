@@ -151,3 +151,20 @@ npm run test:production
 ## v8 Production Polish
 
 Incluye corrección de falso positivo en carta no levantada cuando se elige suma válida, cola visual de pop-ups para evitar superposiciones, y tone de victoria en partida finalizada. QA: 362/362 tests OK.
+
+
+## v9 - Don Evaristo Corral y Chancleta
+
+Esta versión incorpora a Don Evaristo Corral y Chancleta como “juecito de aguas” visual del juego:
+
+- Imagen del personaje en los pop-ups del juez.
+- Botellita/canelazo como elemento visual folklórico.
+- Frases del juez durante caída, limpia, ronda, cartón y cambio de mano.
+- Botón para activar/desactivar la voz del juecito.
+- Voz vía Web Speech API del navegador en español.
+
+Nota: la app no clona una voz real desde una imagen. Para una voz exacta/actoral de Don Evaristo, se pueden reemplazar las frases TTS por archivos `.mp3` autorizados en una futura versión.
+
+## v10 — Don Evaristo visual + tones actuales
+
+Esta versión integra a Don Evaristo Corral y Chancleta como juecito de aguas visual, mantiene los tones actuales y elimina el TTS sintético. La arquitectura queda preparada para audios MP3 autorizados en una futura versión.

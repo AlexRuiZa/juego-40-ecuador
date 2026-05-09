@@ -20,7 +20,7 @@ t('V806 frontend tiene cola visual para evitar superposición de popups',()=>{co
 
 t('V807 frontend difiere final de partida hasta terminar cola visual',()=>{const app=fs.readFileSync('public/app.js','utf8'); assert.ok(app.includes('ui.pendingEndGameState = state')); assert.ok(app.includes('if (!ui.visualBusy && ui.visualQueue.length === 0) showEndGameNow(state)'));});
 
-t('V808 pop-up de victoria tiene audio/tone por speechSynthesis',()=>{const app=fs.readFileSync('public/app.js','utf8'); assert.ok(app.includes('Partida finalizada. Felicitaciones al ganador.'));});
+t('V808 pop-up de victoria tiene audio/tone sin superposición',()=>{const app=fs.readFileSync('public/app.js','utf8'); assert.ok(app.includes('Partida finalizada. Felicitaciones al ganador.')); assert.ok(app.includes('playTonePattern'));});
 
 t('V809 botones de nueva partida y salir al inicio existen',()=>{const html=fs.readFileSync('public/index.html','utf8'); assert.ok(html.includes('btn-new-game')); assert.ok(html.includes('btn-exit-game'));});
 

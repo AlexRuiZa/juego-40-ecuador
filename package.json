@@ -1,6 +1,6 @@
 {
   "name": "40-online-ecuador",
-  "version": "0.8.0",
+  "version": "1.0.0",
   "description": "MVP del juego tradicional ecuatoriano 40, online y multijugador",
   "main": "src/server.js",
   "scripts": {
@@ -10,7 +10,9 @@
     "test:regression": "node tests/qa-regression.test.js",
     "test:production": "node tests/qa-production-v8.test.js",
     "test:production:v6": "node tests/qa-production-v6.test.js",
-    "test:production:v7": "node tests/qa-production-v7.test.js"
+    "test:production:v7": "node tests/qa-production-v7.test.js",
+    "test:production:v9": "node tests/qa-production-v9.test.js",
+    "test:production:v10": "node tests/qa-production-v10.test.js"
   },
   "engines": {
     "node": ">=18"

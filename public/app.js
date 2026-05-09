@@ -87,17 +87,72 @@
 
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+  // ============================
+  // Audio / tones del juecito
+  // ============================
+  // v10: se elimina TTS sintético. Mantenemos tones propios, cortos y mobile-friendly.
+  // La arquitectura queda preparada para reemplazar estos tones por mp3 reales autorizados
+  // en una futura carpeta /public/audio.
+  let audioCtx = null;
+
+  const ensureAudioContext = () => {
+    if (!ui.audioEnabled) return null;
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtx) audioCtx = new Ctx();
+    if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    return audioCtx;
+  };
+
+  const tonePatterns = {
+    caida: [{ f: 392, d: 0.10 }, { f: 523, d: 0.16 }],
+    limpia: [{ f: 523, d: 0.10 }, { f: 659, d: 0.12 }, { f: 784, d: 0.16 }],
+    ronda: [{ f: 330, d: 0.10 }, { f: 392, d: 0.10 }, { f: 494, d: 0.16 }],
+    carton: [{ f: 220, d: 0.08 }, { f: 247, d: 0.08 }, { f: 262, d: 0.12 }],
+    juez: [{ f: 196, d: 0.08 }, { f: 247, d: 0.08 }, { f: 294, d: 0.12 }],
+    victoria: [{ f: 392, d: 0.12 }, { f: 523, d: 0.12 }, { f: 659, d: 0.16 }, { f: 784, d: 0.28 }],
+    warning: [{ f: 196, d: 0.12 }, { f: 175, d: 0.18 }],
+    click: [{ f: 440, d: 0.06 }],
+  };
+
+  const inferToneType = (text = '') => {
+    const t = String(text).toLowerCase();
+    if (t.includes('partida finalizada') || t.includes('felicitaciones') || t.includes('ganador')) return 'victoria';
+    if (t.includes('caída') && t.includes('limpia')) return 'limpia';
+    if (t.includes('caída') || t.includes('shunsho')) return 'caida';
+    if (t.includes('limpia')) return 'limpia';
+    if (t.includes('ronda') || t.includes('guapo')) return 'ronda';
+    if (t.includes('cartón') || t.includes('contar') || t.includes('crocante')) return 'carton';
+    if (t.includes('dejaste') || t.includes('no!!')) return 'warning';
+    if (t.includes('baraje') || t.includes('juecito') || t.includes('evaristo')) return 'juez';
+    return 'click';
+  };
+
+  const playTonePattern = (type = 'click') => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    const pattern = tonePatterns[type] || tonePatterns.click;
+    let at = ctx.currentTime + 0.01;
+    pattern.forEach(({ f, d }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type === 'warning' ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(f, at);
+      gain.gain.setValueAtTime(0.0001, at);
+      gain.gain.exponentialRampToValueAtTime(0.12, at + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, at + d);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(at);
+      osc.stop(at + d + 0.03);
+      at += d + 0.035;
+    });
+  };
+
   const speak = (text) => {
-    if (!ui.audioEnabled || !('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'es-EC';
-      u.rate = 1.02;
-      u.pitch = 0.95;
-      u.volume = 0.85;
-      window.speechSynthesis.speak(u);
-    } catch {}
+    // Conservamos el nombre interno para no tocar toda la cola visual. En v10 reproduce tones, no voz sintética.
+    if (!ui.audioEnabled) return;
+    playTonePattern(inferToneType(text));
   };
 
   function processVisualQueue() {
@@ -390,6 +445,24 @@
 
   $('#btn-clear').addEventListener('click', clearSelection);
 
+  const audioToggleBtn = $('#btn-audio-toggle');
+  if (audioToggleBtn) {
+    const savedAudio = localStorage.getItem('cuarentaAudioEnabled');
+    if (savedAudio !== null) ui.audioEnabled = savedAudio === 'true';
+    const updateAudioButton = () => {
+      audioToggleBtn.textContent = ui.audioEnabled ? '🔊 Sonidos del juecito' : '🔇 Sonidos apagados';
+      audioToggleBtn.classList.toggle('audio-off', !ui.audioEnabled);
+    };
+    updateAudioButton();
+    audioToggleBtn.addEventListener('click', () => {
+      ui.audioEnabled = !ui.audioEnabled;
+      localStorage.setItem('cuarentaAudioEnabled', String(ui.audioEnabled));
+      updateAudioButton();
+      if (ui.audioEnabled) playTonePattern('juez');
+    });
+  }
+
+
   $('#btn-play').addEventListener('click', () => {
     if (ui.selectedHandIndex === null) return;
     const tableIndices = Array.from(ui.selectedTableIndices);
@@ -407,16 +480,16 @@
       const events = [];
       if (r.caida && r.limpia) {
         events.push('¡Caída y limpia juecito!');
-        showJudge('Caída y limpia', '¡Caída y limpia juecito!', { audio: 'Caída y limpia juecito!' });
+        showJudge('Don Evaristo anuncia', '¡Caída y limpia juecito!', { audio: 'Caída y limpia juecito!' });
       } else {
         if (r.caida) {
           events.push(pick(['2 juecito!', '¡Caída juecito!']));
-          showJudge('Caída', pick(['2 juecito!', '¡Caída juecito!']), { audio: r.teamId ? 'Caída juecito!' : null });
+          showJudge('Don Evaristo anuncia caída', pick(['2 juecito!', '¡Caída juecito!']), { audio: r.teamId ? 'Caída juecito!' : null });
         }
         if (r.limpia) {
           const msg = pick(['Vea cómo le dejo, limpiecito!', '2 juecito!', '¡Limpia juez!']);
           events.push(msg);
-          showJudge('Limpia', msg, { audio: msg });
+          showJudge('Don Evaristo anuncia limpia', msg, { audio: msg });
         }
       }
       if (r.captured.length > 0) events.push(`Capturaste ${r.captured.length} cartas`);
@@ -434,7 +507,7 @@
   // ============================
   $('#btn-next-hand').addEventListener('click', () => {
     const phrase = pick(['Mueva la manito juecito de aguas!', 'Baraje bonito, baraje bien juecito!', 'Atiéndanos bien juecito!']);
-    showJudge('Juez de aguas', 'Barajando y repartiendo nueva mano...', { audio: phrase, ms: 2600 });
+    showJudge('Don Evaristo, juecito de aguas', 'Barajando tres veces y repartiendo...', { audio: phrase, ms: 3200 });
     socket.emit('nextHand', { roomCode: ui.roomCode }, (res) => {
       if (!res.ok) showError(res.error);
       $('#modal-end-hand').classList.add('hidden');
@@ -470,12 +543,12 @@
     state.log.forEach(msg => ui.seenLog.add(msg));
     for (const msg of newItems) {
       if (msg.includes('¡Ronda!')) {
-        showJudge('Ronda', '¡2 por guapo!', { audio: 'Dos por guapo' });
+        showJudge('Don Evaristo canta ronda', '¡2 por guapo!', { audio: 'Dos por guapo' });
       } else if (msg.includes('Fin de mano')) {
         const phrase = pick(['¡Contará bien juecito!', '¡Se escucha crocante mi cartón juecito!']);
-        showJudge('Cartón', phrase, { audio: phrase, ms: 3000 });
+        showJudge('Don Evaristo cuenta el cartón', phrase, { audio: phrase, ms: 3200 });
       } else if (msg.includes('zapatero')) {
-        showJudge('Zapatero', '¡Dale que estás zapatero!', { audio: 'Dale que estás zapatero', ms: 2800 });
+        showJudge('Don Evaristo avisa', '¡Dale que estás zapatero!', { audio: 'Dale que estás zapatero', ms: 2800 });
       }
     }
   }
@@ -516,7 +589,7 @@
       : `Ganador: Equipo ${winner}
 A: ${state.teams.A.score} | B: ${state.teams.B.score}`);
     $('#end-game-summary').textContent = summary;
-    speak('Partida finalizada. Felicitaciones al ganador.');
+    speak('Partida finalizada. Felicitaciones al ganador. Don Evaristo felicita la mesa.');
     $('#modal-end-game').classList.remove('hidden');
   }
 

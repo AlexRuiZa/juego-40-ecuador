@@ -61,6 +61,7 @@
         <div>Mano: <strong id="hand-number">1</strong></div>
         <div>Mazo: <strong id="deck-count">0</strong></div>
         <div>Turno de: <strong id="current-player-name">-</strong></div>
+        <button id="btn-audio-toggle" class="audio-toggle" type="button">🔊 Sonidos del juecito</button>
       </div>
     </header>
 
@@ -123,9 +124,11 @@
 
     <div id="judge-overlay" class="judge-overlay hidden">
       <div class="judge-card">
-        <div class="judge-avatar">🧔🏽‍♂️</div>
-        <div class="judge-table">🃏 🥃</div>
-        <div id="judge-title" class="judge-title">Juez de aguas</div>
+        <div class="judge-character">
+          <img src="don-evaristo.jpg" alt="Don Evaristo Corral y Chancleta, juecito de aguas" class="judge-avatar-img" />
+          <div class="judge-props" aria-hidden="true">🃏 🥃</div>
+        </div>
+        <div id="judge-title" class="judge-title">Don Evaristo Corral y Chancleta</div>
         <div id="judge-message" class="judge-message"></div>
       </div>
     </div>

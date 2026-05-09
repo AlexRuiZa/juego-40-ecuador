@@ -439,3 +439,65 @@ body {
 .judge-title { font-size: 22px; font-weight: 900; color: #004b93; text-transform: uppercase; letter-spacing: .5px; }
 .judge-message { margin-top: 8px; font-size: 24px; font-weight: 900; color: #111; }
 @keyframes judge-pop { from { transform: scale(.86); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+/* v9 Don Evaristo Corral y Chancleta - Juecito de Aguas */
+.audio-toggle {
+  width: auto;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(242, 194, 48, 0.18);
+  color: #ffe9a0;
+  border: 1px solid rgba(242, 194, 48, 0.55);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.audio-toggle.audio-off { opacity: 0.78; }
+.judge-card {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  grid-template-areas:
+    "char title"
+    "char msg";
+  align-items: center;
+  gap: 12px 18px;
+  max-width: min(620px, 92vw);
+  text-align: left;
+  overflow: hidden;
+}
+.judge-character {
+  grid-area: char;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+.judge-avatar-img {
+  width: 135px;
+  height: 135px;
+  object-fit: cover;
+  object-position: 50% 45%;
+  border-radius: 28px;
+  border: 4px solid #061b49;
+  box-shadow: 0 14px 35px rgba(0,0,0,.35);
+  background: #d8dee9;
+}
+.judge-props {
+  position: absolute;
+  right: -6px;
+  bottom: -8px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(6, 27, 73, .92);
+  color: #ffd23f;
+  border: 2px solid #ffd23f;
+  font-size: 22px;
+}
+.judge-title { grid-area: title; }
+.judge-message { grid-area: msg; }
+@media (max-width: 640px) {
+  .judge-card {
+    grid-template-columns: 1fr;
+    grid-template-areas: "char" "title" "msg";
+    text-align: center;
+  }
+  .judge-avatar-img { width: 110px; height: 110px; }
+}
